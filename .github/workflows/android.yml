@@ -37,8 +37,9 @@ jobs:
       - name: Build APK
         run: |
           cd android
-          chmod 755 gradlew
-          ./gradlew assembleDebug
+          chmod 777 gradlew
+          ls -l gradlew
+          bash ./gradlew assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
