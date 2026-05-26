@@ -24,8 +24,8 @@ jobs:
 
     - name: Build Web App
       run: |
-        npx cap init "Phrasal Duel" "com.seuapp.phrasalduel" --web-dir=dist
-        npm run build
+        npx cap init "Phrasal Verb Duel" "com.seuapp.phrasalduel" --web-dir=dist
+        npx vite build
         npx cap add android
         npx cap sync android
 
