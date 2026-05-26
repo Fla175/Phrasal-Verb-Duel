@@ -1,6 +1,49 @@
 import { useState, useEffect, useRef } from "react";
 
 /* ═══════════════════════════════════════════════════════
+   TYPES & INTERFACES
+═══════════════════════════════════════════════════════ */
+interface CardItem {
+  id: number;
+  type: "verb" | "particle" | "action";
+  val: string;
+  pts: number;
+  act?: "steal" | "swap" | "block" | "double";
+}
+
+interface NotifData {
+  who?: "you" | "cpu";
+  valid?: boolean;
+  key?: string;
+  ex?: string;
+  pts?: number;
+  pass?: boolean;
+  bl?: boolean;
+  noPlay?: boolean;
+  action?: boolean;
+  act?: "steal" | "swap" | "block" | "double";
+  failed?: boolean;
+}
+
+interface CardProps {
+  card: CardItem;
+  selected?: boolean;
+  onClick?: () => void;
+  faceDown?: boolean;
+}
+
+interface GameRefState {
+  deck: CardItem[];
+  ph: CardItem[];
+  ch: CardItem[];
+  ps: number;
+  cs: number;
+  round: number;
+  blocked: boolean;
+  dbl: boolean;
+}
+
+/* ═══════════════════════════════════════════════════════
    GAME DATA
 ═══════════════════════════════════════════════════════ */
 const VERBS = [
@@ -10,8 +53,10 @@ const VERBS = [
   {v:"BRING",p:2},{v:"KEEP",p:2},{v:"HOLD",p:3},{v:"PICK",p:2},
   {v:"CALL",p:2},{v:"CARRY",p:3},{v:"FALL",p:2},{v:"FIND",p:3},
 ];
+
 const PARTS = ["UP","DOWN","AFTER","OFF","OUT","IN","ON","OVER","THROUGH","BACK","AWAY","AROUND","INTO","ABOUT","ACROSS"];
-const PV = {
+
+const PV: Record<string, string> = {
   "BREAK UP":"They decided to BREAK UP after 3 years.","BREAK DOWN":"My car BROKE DOWN on the highway.",
   "BREAK OUT":"A fire BROKE OUT in the building.","BREAK OFF":"She BROKE OFF the engagement.",
   "BREAK IN":"Burglars BROKE IN through the back window.","BREAK AWAY":"He managed to BREAK AWAY from the crowd.",
@@ -112,7 +157,7 @@ const PV = {
 let _uid = 0;
 const uid = () => ++_uid;
 
-function shuffle(a) {
+function shuffle(a: CardItem[]): CardItem[] {
   const arr = [...a];
   for (let i = arr.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -121,8 +166,8 @@ function shuffle(a) {
   return arr;
 }
 
-function buildDeck() {
-  const cards = [];
+function buildDeck(): CardItem[] {
+  const cards: CardItem[] = [];
   VERBS.forEach(({v,p}) => {
     cards.push({id:uid(),type:"verb",val:v,pts:p});
     cards.push({id:uid(),type:"verb",val:v,pts:p});
@@ -130,18 +175,19 @@ function buildDeck() {
   PARTS.forEach(p => {
     for (let i=0;i<3;i++) cards.push({id:uid(),type:"particle",val:p,pts:0});
   });
-  [{val:"STEAL",act:"steal"},{val:"STEAL",act:"steal"},
+  ([
+   {val:"STEAL",act:"steal"},{val:"STEAL",act:"steal"},
    {val:"SWAP",act:"swap"},{val:"SWAP",act:"swap"},
    {val:"BLOCK",act:"block"},{val:"BLOCK",act:"block"},
    {val:"DOUBLE",act:"double"},{val:"DOUBLE",act:"double"}
-  ].forEach(a => cards.push({id:uid(),type:"action",val:a.val,act:a.act,pts:0}));
+  ] as const).forEach(a => cards.push({id:uid(),type:"action",val:a.val,act:a.act,pts:0}));
   return shuffle(cards);
 }
 
-function bestCpuPlay(hand) {
+function bestCpuPlay(hand: CardItem[]): {v: CardItem; p: CardItem} | null {
   const verbs = hand.filter(c=>c.type==="verb");
   const parts = hand.filter(c=>c.type==="particle");
-  let best = null;
+  let best: {v: CardItem; p: CardItem} | null = null;
   for (const v of verbs)
     for (const p of parts)
       if (PV[`${v.val} ${p.val}`] && (!best || v.pts > best.v.pts))
@@ -152,24 +198,26 @@ function bestCpuPlay(hand) {
 /* ═══════════════════════════════════════════════════════
    CARD COMPONENT
 ═══════════════════════════════════════════════════════ */
-const CARD_CFG = {
+const CARD_CFG: Record<"verb" | "particle" | "action", {border: string; bg: string; glow: string}> = {
   verb:     {border:"#3355ff",bg:"linear-gradient(145deg,#1a1a5e,#0d0d3a)",glow:"#3355ff55"},
   particle: {border:"#ff7700",bg:"linear-gradient(145deg,#4d2000,#2a1000)",glow:"#ff770055"},
   action:   {border:"#ff1144",bg:"linear-gradient(145deg,#4d0011,#2a000c)",glow:"#ff114455"},
 };
-const ACT_ICON = {steal:"🗡️",swap:"🔄",block:"🛡️",double:"⚡"};
-const ACT_CLR  = {steal:"#ff3366",swap:"#33ccff",block:"#33ff99",double:"#ffcc00"};
+const ACT_ICON: Record<string, string> = {steal:"🗡️",swap:"🔄",block:"🛡️",double:"⚡"};
+const ACT_CLR: Record<string, string>  = {steal:"#ff3366",swap:"#33ccff",block:"#33ff99",double:"#ffcc00"};
 
-function Card({card, selected, onClick, faceDown}) {
+function Card({card, selected, onClick, faceDown}: CardProps) {
   if (faceDown) return (
     <div style={{width:60,height:88,borderRadius:8,flexShrink:0,background:"linear-gradient(145deg,#1a1a3e,#0d0d2a)",border:"2px solid #1a1a40",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,color:"#22234a"}}>
       ♠
     </div>
   );
+  
   const cfg = CARD_CFG[card.type];
-  const isAct = card.type==="action";
-  const aColor = isAct ? ACT_CLR[card.act] : null;
-  const fz = card.val.length>6 ? 9 : card.val.length>4 ? 11 : 13;
+  const isAct = card.type === "action";
+  const aColor = isAct && card.act ? ACT_CLR[card.act] : undefined;
+  const fz = card.val.length > 6 ? 9 : card.val.length > 4 ? 11 : 13;
+  
   return (
     <div onClick={onClick} style={{
       width:60,height:88,borderRadius:8,flexShrink:0,position:"relative",
@@ -190,7 +238,7 @@ function Card({card, selected, onClick, faceDown}) {
         </div>
       )}
       <div style={{fontSize:isAct?22:fz,fontWeight:900,color:isAct?aColor:"#fff",lineHeight:1,textAlign:"center",padding:"0 3px"}}>
-        {isAct ? ACT_ICON[card.act] : card.val}
+        {isAct && card.act ? ACT_ICON[card.act] : card.val}
       </div>
       {isAct && <div style={{fontSize:7,color:aColor,fontWeight:700,marginTop:3,letterSpacing:0.5}}>{card.val}</div>}
     </div>
@@ -200,7 +248,7 @@ function Card({card, selected, onClick, faceDown}) {
 /* ═══════════════════════════════════════════════════════
    NOTIFICATION PANEL
 ═══════════════════════════════════════════════════════ */
-function NotifPanel({n}) {
+function NotifPanel({n}: {n: NotifData}) {
   if (n.pass) return (
     <div style={{textAlign:"center",animation:"slideUp 0.3s ease"}}>
       <div style={{fontSize:26,marginBottom:6}}>🔁</div>
@@ -219,14 +267,14 @@ function NotifPanel({n}) {
       <div style={{fontSize:11,color:"#445",marginTop:6}}>CPU não tem par válido. Comprando cartas...</div>
     </div>
   );
-  if (n.action) {
-    const icons={steal:"🗡️",swap:"🔄",block:"🛡️",double:"⚡"};
-    const clrs={steal:"#ff3366",swap:"#33ccff",block:"#33ff99",double:"#ffcc00"};
-    const msgs={
-      steal:n.failed?"CPU não tem par para roubar!":`Roubaste ${n.pts} pts! (${n.key})`,
-      swap:"Mão trocada com a CPU!",
-      block:"CPU bloqueada na próxima rodada!",
-      double:"Próxima jogada vale o DOBRO!",
+  if (n.action && n.act) {
+    const icons: Record<string, string> = {steal:"🗡️",swap:"🔄",block:"🛡️",double:"⚡"};
+    const clrs: Record<string, string> = {steal:"#ff3366",swap:"#33ccff",block:"#33ff99",double:"#ffcc00"};
+    const msgs: Record<string, string> = {
+      steal: n.failed ? "CPU não tem par para roubar!" : `Roubaste ${n.pts} pts! (${n.key})`,
+      swap: "Mão trocada com a CPU!",
+      block: "CPU bloqueada na próxima rodada!",
+      double: "Próxima jogada vale o DOBRO!",
     };
     return (
       <div style={{textAlign:"center",animation:"popIn 0.35s ease"}}>
@@ -235,9 +283,11 @@ function NotifPanel({n}) {
       </div>
     );
   }
-  const isYou = n.who==="you";
+  
+  const isYou = n.who === "you";
   const color = n.valid ? (isYou?"#44ffaa":"#ff3366") : "#445";
-  const longKey = n.key && n.key.length>14;
+  const longKey = n.key && n.key.length > 14;
+  
   return (
     <div style={{textAlign:"center",animation:"popIn 0.35s ease",maxWidth:280,padding:"0 8px"}}>
       <div style={{fontSize:9,color:"#445",letterSpacing:2,marginBottom:4}}>{isYou?"VOCÊ JOGOU":"CPU JOGOU"}</div>
@@ -259,7 +309,7 @@ function NotifPanel({n}) {
 /* ═══════════════════════════════════════════════════════
    SCREENS
 ═══════════════════════════════════════════════════════ */
-function Menu({onStart}) {
+function Menu({onStart}: {onStart: () => void}) {
   const [hover, setHover] = useState(false);
   return (
     <div style={{minHeight:"100vh",background:"linear-gradient(160deg,#07071a,#0c1428,#07071a)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,textAlign:"center",fontFamily:"'Rajdhani',sans-serif",color:"#d0d0f0"}}>
@@ -286,9 +336,9 @@ function Menu({onStart}) {
   );
 }
 
-function GameOver({ps, cs, onPlay}) {
-  const win = ps>cs, tie = ps===cs;
-  const color = tie?"#ffcc00":win?"#44ffaa":"#ff3366";
+function GameOver({ps, cs, onPlay}: {ps: number; cs: number; onPlay: () => void}) {
+  const win = ps > cs, tie = ps === cs;
+  const color = tie ? "#ffcc00" : win ? "#44ffaa" : "#ff3366";
   return (
     <div style={{minHeight:"100vh",background:"linear-gradient(160deg,#07071a,#0c1428,#07071a)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,textAlign:"center",fontFamily:"'Rajdhani',sans-serif",color:"#d0d0f0"}}>
       <div style={{fontSize:60,marginBottom:16,animation:"popIn 0.5s ease"}}>{tie?"🤝":win?"🏆":"🤖"}</div>
@@ -318,26 +368,25 @@ function GameOver({ps, cs, onPlay}) {
 ═══════════════════════════════════════════════════════ */
 const MAX_ROUNDS = 10;
 
-export default function App() {
-  const [screen, setScreen] = useState("menu");
-  const [deck,   setDeck]   = useState([]);
-  const [ph,     setPh]     = useState([]);   // player hand
-  const [ch,     setCh]     = useState([]);   // cpu hand
-  const [ps,     setPs]     = useState(0);    // player score
-  const [cs,     setCs]     = useState(0);    // cpu score
-  const [round,  setRound]  = useState(1);
-  const [phase,  setPhase]  = useState("player");
-  // "player" | "animating" | "cpu"
-  const [selV,   setSelV]   = useState(null);
-  const [selP,   setSelP]   = useState(null);
-  const [notif,  setNotif]  = useState(null);
-  const [blocked,setBlocked]= useState(false);
-  const [dbl,    setDbl]    = useState(false);
+export default function PhrasalVerbDuel() {
+  const [screen, setScreen] = useState<"menu" | "game" | "over">("menu");
+  const [deck,   setDeck]   = useState<CardItem[]>([]);
+  const [ph,     setPh]     = useState<CardItem[]>([]);
+  const [ch,     setCh]     = useState<CardItem[]>([]);
+  const [ps,     setPs]     = useState<number>(0);
+  const [cs,     setCs]     = useState<number>(0);
+  const [round,  setRound]  = useState<number>(1);
+  const [phase,  setPhase]  = useState<"player" | "animating" | "cpu">("player");
+  
+  const [selV,   setSelV]   = useState<CardItem | null>(null);
+  const [selP,   setSelP]   = useState<CardItem | null>(null);
+  const [notif,  setNotif]  = useState<NotifData | null>(null);
+  const [blocked,setBlocked]= useState<boolean>(false);
+  const [dbl,    setDbl]    = useState<boolean>(false);
 
-  const ref = useRef({});
+  const ref = useRef<GameRefState>({ deck: [], ph: [], ch: [], ps: 0, cs: 0, round: 1, blocked: false, dbl: false });
   ref.current = {deck,ph,ch,ps,cs,round,blocked,dbl};
 
-  // CSS animations injected once
   const cssInjected = useRef(false);
 
   useEffect(() => {
@@ -356,7 +405,6 @@ export default function App() {
     document.head.appendChild(s);
   }, []);
 
-  // CPU trigger
   useEffect(() => {
     if (phase !== "cpu") return;
     const t = setTimeout(doCpuTurn, 1100);
@@ -373,7 +421,7 @@ export default function App() {
     setScreen("game");
   }
 
-  function drawN(d, n) { return {drawn:d.slice(0,n), rest:d.slice(n)}; }
+  function drawN(d: CardItem[], n: number) { return {drawn:d.slice(0,n), rest:d.slice(n)}; }
 
   function nextRound() {
     const next = ref.current.round + 1;
@@ -422,18 +470,18 @@ export default function App() {
     setTimeout(()=>{setNotif(null);nextRound();}, 2500);
   }
 
-  function handleCard(card) {
+  function handleCard(card: CardItem) {
     if (phase !== "player") return;
     if (card.type==="action") { doAction(card); return; }
     if (card.type==="verb") setSelV(prev=>prev?.id===card.id?null:card);
     else setSelP(prev=>prev?.id===card.id?null:card);
   }
 
-  function doAction(card) {
-    if (phase !== "player") return;
+  function doAction(card: CardItem) {
+    if (phase !== "player" || !card.act) return;
     const {ph: hand, ch: cpuH, deck: d} = ref.current;
     const newHand = hand.filter(c=>c.id!==card.id);
-    const notifData = {who:"you",action:true,act:card.act};
+    const notifData: NotifData = {who:"you",action:true,act:card.act};
     if (card.act==="steal") {
       const play = bestCpuPlay(cpuH);
       if (play) { const pts=play.v.pts; setPs(s=>s+pts); notifData.pts=pts; notifData.key=`${play.v.val} ${play.p.val}`; }
@@ -473,7 +521,7 @@ export default function App() {
   return (
     <div style={{minHeight:"100vh",background:"linear-gradient(160deg,#07071a,#0b1228,#07071a)",display:"flex",flexDirection:"column",fontFamily:"'Rajdhani',sans-serif",color:"#d0d0f0",overflow:"hidden"}}>
 
-      {/* ── Header ─────────────────────────────────────── */}
+      {/* Header */}
       <div style={{padding:"8px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",borderBottom:"1px solid #111133",flexShrink:0,background:"#06061500"}}>
         <span style={{fontFamily:"'Orbitron',monospace",fontSize:11,color:"#3355ff",letterSpacing:2,textShadow:"0 0 12px #3355ff66"}}>⚔ PHRASAL DUEL</span>
         <div style={{flex:1,margin:"0 12px",height:3,background:"#111133",borderRadius:2,overflow:"hidden"}}>
@@ -482,7 +530,7 @@ export default function App() {
         <span style={{fontFamily:"'Orbitron',monospace",fontSize:10,color:"#445",letterSpacing:1}}>R{round}/{MAX_ROUNDS}</span>
       </div>
 
-      {/* ── Scoreboard ─────────────────────────────────── */}
+      {/* Scoreboard */}
       <div style={{display:"flex",justifyContent:"space-around",alignItems:"center",padding:"8px 16px 4px",flexShrink:0}}>
         <div style={{textAlign:"center",minWidth:80}}>
           <div style={{fontSize:8,letterSpacing:2,color:"#445",marginBottom:2}}>CPU</div>
@@ -497,7 +545,7 @@ export default function App() {
         </div>
       </div>
 
-      {/* ── CPU Hand (face down) ─────────────────────── */}
+      {/* CPU Hand */}
       <div style={{padding:"4px 10px 6px",flexShrink:0}}>
         <div style={{fontSize:8,color:"#1a1a44",letterSpacing:2,textAlign:"center",marginBottom:4}}>MÃO DA CPU ({ch.length} cartas)</div>
         <div style={{display:"flex",gap:5,justifyContent:"center",flexWrap:"wrap"}}>
@@ -506,10 +554,9 @@ export default function App() {
         </div>
       </div>
 
-      {/* ── Divider ──────────────────────────────────── */}
       <div style={{height:1,background:"linear-gradient(90deg,transparent,#1a1a3e,transparent)",margin:"2px 0",flexShrink:0}}/>
 
-      {/* ── Play Area / Notifications ─────────────────── */}
+      {/* Play Area */}
       <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:"10px 14px",minHeight:115}}>
         {notif ? (
           <NotifPanel n={notif}/>
@@ -539,10 +586,9 @@ export default function App() {
         )}
       </div>
 
-      {/* ── Divider ──────────────────────────────────── */}
       <div style={{height:1,background:"linear-gradient(90deg,transparent,#1a1a3e,transparent)",margin:"2px 0",flexShrink:0}}/>
 
-      {/* ── Player Hand ───────────────────────────────── */}
+      {/* Player Hand */}
       <div style={{padding:"6px 8px 4px",flexShrink:0}}>
         <div style={{fontSize:8,color:"#1a1a44",letterSpacing:2,textAlign:"center",marginBottom:5}}>SUA MÃO</div>
         <div style={{display:"flex",gap:5,justifyContent:"center",flexWrap:"wrap"}}>
@@ -556,7 +602,7 @@ export default function App() {
         </div>
       </div>
 
-      {/* ── Action Bar ────────────────────────────────── */}
+      {/* Action Bar */}
       <div style={{padding:"8px 12px 16px",display:"flex",gap:8,justifyContent:"center",flexShrink:0}}>
         {selV && selP && isPlayerTurn && (
           <button onClick={submitPlay} style={{
