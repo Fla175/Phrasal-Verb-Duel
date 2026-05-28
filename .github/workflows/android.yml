@@ -29,17 +29,13 @@ jobs:
 
       - name: Build Web App
         run: |
-          npm install @capacitor/cli @capacitor/core
-          npx cap add android
-          npx cap init "Phrasal Verb Duel" "com.seuapp.phrasalduel" --web-dir=dist
+          npm install @capacitor/cli @capacitor/core @capacitor/android
           npx vite build
           npx cap sync android
 
       - name: Build APK
         run: |
-          ls -R
           cd android
-          ls -la
           chmod +x gradlew
           ./gradlew assembleDebug
 
