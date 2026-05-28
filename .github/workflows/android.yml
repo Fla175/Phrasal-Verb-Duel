@@ -29,19 +29,18 @@ jobs:
 
       - name: Build Web App
         run: |
-          npx cap init "Phrasal Verb Duele" "com.seuapp.phrasalduel" --web-dir=dist
+          npx cap init "Phrasal Verb Duel" "com.seuapp.phrasalduel" --web-dir=dist
           npx vite build
           npx cap add android
           npx cap sync android
 
-        - name: Build APK
+      - name: Build APK
         run: |
           ls -R
           cd android
           ls -la
           chmod +x gradlew
           ./gradlew assembleDebug
-
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
