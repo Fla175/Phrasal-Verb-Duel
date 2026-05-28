@@ -34,12 +34,14 @@ jobs:
           npx cap add android
           npx cap sync android
 
-      - name: Build APK
+        - name: Build APK
         run: |
+          ls -R
           cd android
-          chmod 777 gradlew
-          ls -l gradlew
-          bash ./gradlew assembleDebug
+          ls -la
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
