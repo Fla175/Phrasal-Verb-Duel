@@ -29,6 +29,7 @@ jobs:
 
       - name: Build Web App
         run: |
+          npx install @capacitor/cli @capacitor/core
           npx cap init "Phrasal Verb Duel" "com.seuapp.phrasalduel" --web-dir=dist
           npx vite build
           npx cap add android
