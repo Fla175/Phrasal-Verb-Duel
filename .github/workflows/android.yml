@@ -31,6 +31,7 @@ jobs:
         run: |
           npm install @capacitor/cli @capacitor/core
           npx cap add android
+          npx cap init "Phrasal Verb Duel" "com.seuapp.phrasalduel" --web-dir=dist
           npx vite build
           npx cap sync android
 
