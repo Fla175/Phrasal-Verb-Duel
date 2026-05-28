@@ -30,6 +30,7 @@ jobs:
       - name: Build Web App
         run: |
           npm install @capacitor/cli @capacitor/core
+          npx cap add android
           npx vite build
           npx cap sync android
 
