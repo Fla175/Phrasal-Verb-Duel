@@ -31,7 +31,6 @@ jobs:
         run: |
           npx install @capacitor/cli @capacitor/core
           npx vite build
-          npx cap add android
           npx cap sync android
 
       - name: Build APK
