@@ -34,6 +34,9 @@ jobs:
           rm -rf android
           npx cap add android
           npx cap sync android
+          
+          # Remove os pacotes duplicados obsoletos do Kotlin que quebram o build
+          echo "subprojects { configurations.all { exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'; exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8' } }" >> android/build.gradle
 
       - name: Build APK
         run: |
@@ -46,3 +49,4 @@ jobs:
         with:
           name: app-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
+
