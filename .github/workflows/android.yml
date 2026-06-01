@@ -34,11 +34,11 @@ jobs:
           mkdir -p app/src/main/res/mipmap-xxxhdpi
     
           # Copia o ícone dos assets para as pastas de recursos (substitua 'seu_icone.png')
-          cp assets/seu_icone.png app/src/main/res/mipmap-hdpi/ic_launcher.png
-          cp assets/seu_icone.png app/src/main/res/mipmap-mdpi/ic_launcher.png
-          cp assets/seu_icone.png app/src/main/res/mipmap-xhdpi/ic_launcher.png
-          cp assets/seu_icone.png app/src/main/res/mipmap-xxhdpi/ic_launcher.png
-          cp assets/seu_icone.png app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+          cp assets/icone.png app/src/main/res/mipmap-hdpi/ic_launcher.png
+          cp assets/icone.png app/src/main/res/mipmap-mdpi/ic_launcher.png
+          cp assets/icone.png app/src/main/res/mipmap-xhdpi/ic_launcher.png
+          cp assets/icone.png app/src/main/res/mipmap-xxhdpi/ic_launcher.png
+          cp assets/icone.png app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
 
       - name: Install Dependencies
         run: npm install
