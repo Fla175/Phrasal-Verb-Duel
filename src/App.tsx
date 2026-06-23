@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import Joyride, { Step } from "react-joyride";
 
 /* ═══════════════════════════════════════════════════════
    TYPES & INTERFACES
@@ -32,821 +33,670 @@ interface CardProps {
   faceDown?: boolean;
 }
 
-interface GameRefState {
-  deck: CardItem[];
-  p1Hand: CardItem[];
-  p2Hand: CardItem[];
-  p1Score: number;
-  p2Score: number;
-  round: number;
-  p1Blocked: boolean;
-  p2Blocked: boolean;
-  p1Dbl: boolean;
-  p2Dbl: boolean;
-}
-
 type Difficulty = "easy" | "medium" | "hard";
 type GameMode = "solo" | "multi";
-type GamePhase = "p1" | "p2" | "cpu" | "animating";
+type GamePhase = "menu" | "p1" | "p2" | "cpu" | "end";
 
 /* ═══════════════════════════════════════════════════════
-   GAME DATA
+   INITIAL DECK & DATA
 ═══════════════════════════════════════════════════════ */
-const VERBS = [
-  {v:"BREAK",p:3},{v:"LOOK",p:2},{v:"TAKE",p:2},{v:"TURN",p:2},
-  {v:"GIVE",p:3},{v:"PUT",p:2},{v:"GET",p:3},{v:"COME",p:2},
-  {v:"GO",p:2},{v:"RUN",p:3},{v:"SET",p:2},{v:"MAKE",p:3},
-  {v:"BRING",p:2},{v:"KEEP",p:2},{v:"HOLD",p:3},{v:"PICK",p:2},
-  {v:"CALL",p:2},{v:"CARRY",p:3},{v:"FALL",p:2},{v:"FIND",p:3},
+const INITIAL_VERBS = [
+  { val: "GET", pts: 2 }, { val: "LOOK", pts: 2 }, { val: "TAKE", pts: 3 },
+  { val: "RUN", pts: 3 }, { val: "BRING", pts: 4 }, { val: "PUT", pts: 3 },
+  { val: "GIVE", pts: 4 }, { val: "CALL", pts: 2 }, { val: "BREAK", pts: 4 }
 ];
 
-const PARTS = ["UP","DOWN","AFTER","OFF","OUT","IN","ON","OVER","THROUGH","BACK","AWAY","AROUND","INTO","ABOUT","ACROSS"];
+const INITIAL_PARTICLES = [
+  { val: "UP", pts: 2 }, { val: "OUT", pts: 3 }, { val: "OFF", pts: 4 },
+  { val: "ON", pts: 2 }, { val: "DOWN", pts: 3 }, { val: "AWAY", pts: 4 },
+  { val: "IN", pts: 2 }, { val: "AFTER", pts: 4 }, { val: "BACK", pts: 3 }
+];
 
-const PV: Record<string, string> = {
-  "BREAK UP":"They decided to BREAK UP after 3 years.","BREAK DOWN":"My car BROKE DOWN on the highway.",
-  "BREAK OUT":"A fire BROKE OUT in the building.","BREAK OFF":"She BROKE OFF the engagement.",
-  "BREAK IN":"Burglars BROKE IN through the back window.","BREAK AWAY":"He managed to BREAK AWAY from the crowd.",
-  "BREAK THROUGH":"Scientists BROKE THROUGH with a new treatment.","BREAK INTO":"They BROKE INTO the old warehouse.",
-  "LOOK UP":"Let me LOOK UP the address online.","LOOK DOWN":"Don't LOOK DOWN from the top!",
-  "LOOK AFTER":"Can you LOOK AFTER my cat while I'm away?","LOOK OUT":"LOOK OUT! A car is coming!",
-  "LOOK IN":"I'll LOOK IN on you later.","LOOK ON":"Everyone LOOKED ON as it happened.",
-  "LOOK OVER":"Please LOOK OVER this document.","LOOK BACK":"I like to LOOK BACK on happy memories.",
-  "LOOK AWAY":"She couldn't LOOK AWAY from the accident.","LOOK AROUND":"Let's LOOK AROUND the museum.",
-  "LOOK INTO":"The police are LOOKING INTO the matter.","LOOK ABOUT":"He LOOKED ABOUT nervously.",
-  "LOOK THROUGH":"LOOK THROUGH these old photos.",
-  "TAKE UP":"She TOOK UP painting as a hobby.","TAKE DOWN":"Please TAKE DOWN these notes.",
-  "TAKE OFF":"The plane will TAKE OFF soon.","TAKE OUT":"He TOOK her OUT to dinner.",
-  "TAKE IN":"I couldn't TAKE IN all that information.","TAKE ON":"She TOOK ON too much work.",
-  "TAKE OVER":"He TOOK OVER the company last year.","TAKE BACK":"I TAKE BACK what I said.",
-  "TAKE AWAY":"The police TOOK him AWAY.","TAKE AFTER":"She TAKES AFTER her mother.",
-  "TAKE THROUGH":"She TOOK me THROUGH the process step by step.",
-  "TURN UP":"He TURNED UP late to the meeting.","TURN DOWN":"She TURNED DOWN the job offer.",
-  "TURN OFF":"Please TURN OFF the lights.","TURN OUT":"It TURNED OUT to be a great day.",
-  "TURN IN":"It's time to TURN IN for the night.","TURN ON":"TURN ON the TV, please.",
-  "TURN OVER":"TURN OVER the page.","TURN BACK":"We had to TURN BACK due to the storm.",
-  "TURN AWAY":"They TURNED AWAY hundreds of fans.","TURN AROUND":"We need to TURN this situation AROUND.",
-  "TURN INTO":"The frog TURNED INTO a prince.",
-  "GIVE UP":"Don't GIVE UP on your dreams!","GIVE OUT":"She GAVE OUT flyers on the street.",
-  "GIVE IN":"He finally GAVE IN to her demands.","GIVE BACK":"GIVE BACK what you borrowed.",
-  "GIVE AWAY":"She GAVE AWAY her old clothes.",
-  "PUT UP":"Can you PUT me UP for the night?","PUT DOWN":"PUT DOWN that phone!",
-  "PUT OFF":"Don't PUT OFF what you can do today.","PUT OUT":"The firefighters PUT OUT the fire.",
-  "PUT IN":"She PUT IN a lot of effort.","PUT ON":"PUT ON your jacket, it's cold.",
-  "PUT THROUGH":"I'll PUT you THROUGH to the manager.","PUT BACK":"PUT BACK the book where you found it.",
-  "PUT AWAY":"PUT AWAY your toys.",
-  "GET UP":"I GET UP at 7 every morning.","GET DOWN":"GET DOWN from that table!",
-  "GET OFF":"We need to GET OFF at the next stop.","GET OUT":"GET OUT of here!",
-  "GET IN":"I GOT IN late last night.","GET ON":"How are you GETTING ON at your new job?",
-  "GET OVER":"It took months to GET OVER the flu.","GET THROUGH":"We GOT THROUGH the difficult time.",
-  "GET BACK":"I'll GET BACK to you tomorrow.","GET AWAY":"We managed to GET AWAY for the weekend.",
-  "GET AROUND":"She GETS AROUND the city by bike.","GET INTO":"How did you GET INTO photography?",
-  "GET ABOUT":"She GETS ABOUT quite well despite her age.","GET ACROSS":"It's hard to GET this idea ACROSS.",
-  "COME UP":"Something CAME UP at work.","COME DOWN":"Prices CAME DOWN last month.",
-  "COME OFF":"The button CAME OFF my shirt.","COME OUT":"Her new book COMES OUT next month.",
-  "COME IN":"COME IN, the door is open.","COME ON":"COME ON, we'll be late!",
-  "COME OVER":"Why don't you COME OVER for dinner?","COME THROUGH":"She CAME THROUGH the surgery fine.",
-  "COME BACK":"When will you COME BACK?","COME AROUND":"He CAME AROUND to her point of view.",
-  "COME ACROSS":"I CAME ACROSS this old photo.","COME ABOUT":"How did this COME ABOUT?",
-  "COME INTO":"She CAME INTO a lot of money.",
-  "GO UP":"Prices keep GOING UP.","GO DOWN":"The sun GOES DOWN early in winter.",
-  "GO OFF":"The alarm WENT OFF at 6am.","GO OUT":"Let's GO OUT for dinner.",
-  "GO IN":"We should GO IN now.","GO ON":"What's GOING ON here?",
-  "GO OVER":"Let's GO OVER the plan again.","GO THROUGH":"We WENT THROUGH a tough time.",
-  "GO BACK":"I want to GO BACK to Spain.","GO AWAY":"The pain finally WENT AWAY.",
-  "GO AROUND":"There's enough food to GO AROUND.","GO INTO":"She didn't want to GO INTO detail.",
-  "GO ABOUT":"How do you GO ABOUT solving this?","GO ACROSS":"GO ACROSS the bridge and turn left.",
-  "RUN UP":"She RAN UP a huge bill.","RUN DOWN":"The battery RAN DOWN quickly.",
-  "RUN OFF":"The thief RAN OFF with my bag.","RUN OUT":"We've RUN OUT of time.",
-  "RUN ON":"The meeting RAN ON longer than expected.","RUN OVER":"A car almost RAN OVER the dog.",
-  "RUN THROUGH":"Let me RUN THROUGH the main points.","RUN BACK":"RUN BACK and get your coat.",
-  "RUN AWAY":"He RAN AWAY from home at 16.","RUN AROUND":"Stop RUNNING AROUND the house!",
-  "RUN INTO":"I RAN INTO my ex at the supermarket.","RUN ACROSS":"I RAN ACROSS an interesting article.",
-  "SET UP":"She SET UP her own business.","SET OFF":"We SET OFF at dawn.",
-  "SET OUT":"He SET OUT to prove them wrong.","SET IN":"The cold weather has SET IN.",
-  "SET BACK":"The delay SET us BACK two weeks.","SET ABOUT":"She SET ABOUT cleaning the house.",
-  "SET DOWN":"SET DOWN your bags here.",
-  "MAKE UP":"They argued but soon MADE UP.","MAKE OUT":"I can barely MAKE OUT what you're saying.",
-  "MAKE OVER":"She MADE OVER the entire room.","MAKE INTO":"They MADE the garage INTO a studio.",
-  "BRING UP":"She BROUGHT UP an interesting point.","BRING DOWN":"The scandal BROUGHT DOWN the government.",
-  "BRING OFF":"He BROUGHT OFF a brilliant deal.","BRING OUT":"Travel BRINGS OUT the best in people.",
-  "BRING IN":"The new law was BROUGHT IN last year.","BRING ON":"What BROUGHT ON this sudden change?",
-  "BRING OVER":"BRING OVER some chairs.","BRING THROUGH":"Good care BROUGHT him THROUGH the illness.",
-  "BRING BACK":"Those photos BRING BACK happy memories.","BRING AROUND":"She BROUGHT him AROUND to the idea.",
-  "KEEP UP":"KEEP UP the good work!","KEEP DOWN":"Keep your voice DOWN.",
-  "KEEP OFF":"KEEP OFF the grass!","KEEP OUT":"KEEP OUT! Danger zone.",
-  "KEEP IN":"The teacher KEPT him IN after class.","KEEP ON":"KEEP ON trying!",
-  "KEEP BACK":"KEEP BACK from the edge.","KEEP AWAY":"KEEP AWAY from trouble.",
-  "HOLD UP":"Sorry I'm late — I was HELD UP in traffic.","HOLD DOWN":"He couldn't HOLD DOWN a job.",
-  "HOLD OFF":"HOLD OFF on making a decision.","HOLD OUT":"She HELD OUT for a better offer.",
-  "HOLD IN":"He HELD IN his emotions.","HOLD ON":"HOLD ON, I'll be right there.",
-  "HOLD OVER":"The show was HELD OVER for another week.","HOLD BACK":"Don't HOLD BACK — say what you think.",
-  "PICK UP":"Can you PICK ME UP from the airport?","PICK OUT":"PICK OUT your favorite color.",
-  "PICK ON":"Stop PICKING ON your sister!","PICK OVER":"She PICKED OVER the details carefully.",
-  "CALL UP":"CALL ME UP when you arrive.","CALL OFF":"The game was CALLED OFF due to rain.",
-  "CALL OUT":"She CALLED OUT for help.","CALL IN":"CALL IN sick if you're not feeling well.",
-  "CALL ON":"The teacher CALLED ON me to answer.","CALL BACK":"I'll CALL YOU BACK in five minutes.",
-  "CALL AWAY":"He was CALLED AWAY on urgent business.",
-  "CARRY ON":"CARRY ON with the good work!","CARRY OUT":"They CARRIED OUT a series of tests.",
-  "CARRY OFF":"She CARRIED OFF the performance brilliantly.","CARRY THROUGH":"She CARRIED THROUGH her plans.",
-  "CARRY AWAY":"Don't get CARRIED AWAY!","CARRY OVER":"Some costs will CARRY OVER to next year.",
-  "FALL DOWN":"The old building finally FELL DOWN.","FALL OFF":"The apple FELL OFF the tree.",
-  "FALL OUT":"They FELL OUT over money.","FALL IN":"FALL IN line, everyone.",
-  "FALL ON":"Christmas FALLS ON a Sunday this year.","FALL OVER":"She tripped and FELL OVER.",
-  "FALL THROUGH":"The deal FELL THROUGH at the last minute.","FALL BACK":"We FELL BACK on our savings.",
-  "FALL AWAY":"Support FELL AWAY quickly.",
-  "FIND OUT":"I need to FIND OUT the truth.",
+const VALID_COMBOS: Record<string, { ex: string; bonus: number }> = {
+  "GET_UP": { ex: "Levantar-se da cama", bonus: 2 },
+  "GET_OUT": { ex: "Sair de algum lugar", bonus: 1 },
+  "LOOK_AFTER": { ex: "Cuidar de alguém/algo", bonus: 4 },
+  "LOOK_UP": { ex: "Pesquisar uma informação", bonus: 2 },
+  "TAKE_OFF": { ex: "Decolar (avião) ou tirar roupa", bonus: 4 },
+  "RUN_AWAY": { ex: "Fugir de algo/alguém", bonus: 3 },
+  "RUN_OUT": { val: "Ficar sem estoque/esgotar", bonus: 3 },
+  "BRING_BACK": { ex: "Devolver algo ou relembrar", bonus: 4 },
+  "PUT_ON": { ex: "Vestir uma roupa/calçado", bonus: 2 },
+  "PUT_DOWN": { ex: "Insultar ou pousar objeto", bonus: 2 },
+  "GIVE_UP": { ex: "Desistir de algo", bonus: 5 },
+  "CALL_OFF": { ex: "Cancelar um evento", bonus: 4 },
+  "BREAK_DOWN": { ex: "Enguiçar ou desabar emocionalmente", bonus: 4 }
 };
 
-/* ═══════════════════════════════════════════════════════
-   HELPERS & REFACTORING
-═══════════════════════════════════════════════════════ */
-let _uid = 0;
-const uid = () => ++_uid;
+function createDeck(): CardItem[] {
+  const deck: CardItem[] = [];
+  let id = 1;
 
-function shuffle(a: CardItem[]): CardItem[] {
-  const arr = [...a];
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
-  return arr;
-}
-
-function buildDeck(): CardItem[] {
-  const cards: CardItem[] = [];
-  VERBS.forEach(({v,p}) => {
-    cards.push({id:uid(),type:"verb",val:v,pts:p});
-    cards.push({id:uid(),type:"verb",val:v,pts:p});
-  });
-  PARTS.forEach(p => {
-    for (let i=0;i<3;i++) cards.push({id:uid(),type:"particle",val:p,pts:0});
-  });
-  ([
-   {val:"STEAL",act:"steal"},{val:"STEAL",act:"steal"},
-   {val:"SWAP",act:"swap"},{val:"SWAP",act:"swap"},
-   {val:"BLOCK",act:"block"},{val:"BLOCK",act:"block"},
-   {val:"DOUBLE",act:"double"},{val:"DOUBLE",act:"double"}
-  ] as const).forEach(a => cards.push({id:uid(),type:"action",val:a.val,act:a.act,pts:0}));
-  return shuffle(cards);
-}
-
-// Inteligência Artificial Inteligente por Níveis de Dificuldade
-function calculateCpuPlay(hand: CardItem[], diff: Difficulty, playerPts: number, cpuPts: number): { type: "combo"; v: CardItem; p: CardItem } | { type: "action"; card: CardItem } | null {
-  const verbs = hand.filter(c=>c.type==="verb");
-  const parts = hand.filter(c=>c.type==="particle");
-  const actions = hand.filter(c=>c.type==="action");
-
-  // Estratégia Avançada (Hard) com Cartas de Ação
-  if (diff === "hard" && actions.length > 0) {
-    const steal = actions.find(c => c.act === "steal");
-    if (steal && playerPts > 4) return { type: "action", card: steal };
-
-    const block = actions.find(c => c.act === "block");
-    if (block && playerPts > cpuPts) return { type: "action", card: block };
+  for (let i = 0; i < 3; i++) {
+    INITIAL_VERBS.forEach(v => deck.push({ id: id++, type: "verb", val: v.val, pts: v.pts }));
+    INITIAL_PARTICLES.forEach(p => deck.push({ id: id++, type: "particle", val: p.val, pts: p.pts }));
   }
 
-  let validCombos: {v: CardItem; p: CardItem}[] = [];
-  for (const v of verbs) {
-    for (const p of parts) {
-      if (PV[`${v.val} ${p.val}`]) validCombos.push({v,p});
+  const actions: { val: string; act: "steal" | "swap" | "block" | "double" }[] = [
+    { val: "⚡ STEAL", act: "steal" },
+    { val: "🔄 SWAP", act: "swap" },
+    { val: "🛡️ BLOCK", act: "block" },
+    { val: "💥 DOUBLE", act: "double" }
+  ];
+
+  actions.forEach(act => {
+    for (let i = 0; i < 3; i++) {
+      deck.push({ id: id++, type: "action", val: act.val, pts: 0, act: act.act });
     }
-  }
+  });
 
-  if (validCombos.length === 0) {
-    if (actions.length > 0 && diff !== "easy") {
-      return { type: "action", card: actions[0] };
-    }
-    return null;
-  }
-
-  // Ordena por maior pontuação
-  validCombos.sort((a,b) => b.v.pts - a.v.pts);
-
-  if (diff === "easy") {
-    if (Math.random() > 0.6) return null; // 60% de chance de errar ou passar bobeira
-    return { type: "combo", ...validCombos[Math.floor(Math.random() * validCombos.length)] };
-  }
-
-  if (diff === "medium") {
-    return Math.random() > 0.2 ? { type: "combo", ...validCombos[0] } : null;
-  }
-
-  // Hard Mode sempre joga perfeitamente a melhor combinação
-  return { type: "combo", ...validCombos[0] };
+  return deck.sort(() => Math.random() - 0.5);
 }
 
 /* ═══════════════════════════════════════════════════════
    CARD COMPONENT
 ═══════════════════════════════════════════════════════ */
-const CARD_CFG = {
-  verb:     {border:"#3355ff",bg:"linear-gradient(145deg,#0f163a,#070b24)",glow:"rgba(51,85,255,0.4)"},
-  particle: {border:"#ff7700",bg:"linear-gradient(145deg,#2e1400,#140800)",glow:"rgba(255,119,0,0.4)"},
-  action:   {border:"#ff1144",bg:"linear-gradient(145deg,#33000a,#140003)",glow:"rgba(255,17,68,0.4)"},
-};
-const ACT_ICON: Record<string, string> = {steal:"🗡️",swap:"🔄",block:"🛡️",double:"⚡"};
-const ACT_CLR: Record<string, string>  = {steal:"#ff3366",swap:"#33ccff",block:"#33ff99",double:"#ffcc00"};
+const Card = ({ card, selected, onClick, faceDown }: CardProps) => {
+  const getTheme = () => {
+    if (faceDown) return { border: "#333", bg: "#111424", glow: "rgba(0,0,0,0)", txt: "#555" };
+    switch (card.type) {
+      case "verb": return { border: "#3355ff", bg: "#0d1b40", glow: "rgba(51,85,255,0.4)", txt: "#88a0ff" };
+      case "particle": return { border: "#ff7700", bg: "#40220d", glow: "rgba(255,119,0,0.4)", txt: "#ffb380" };
+      case "action": return { border: "#ff1144", bg: "#400d1a", glow: "rgba(255,17,68,0.4)", txt: "#ff8099" };
+    }
+  };
 
-function Card({card, selected, onClick, faceDown}: CardProps) {
-  if (faceDown) return (
-    <div style={{width:64,height:92,borderRadius:10,flexShrink:0,background:"linear-gradient(145deg,#151535,#0a0a1f)",border:"2px solid #222554",display:"flex",alignItems:"center",justifyContent:"center",fontSize:26,color:"#3b3e75",boxShadow:"inset 0 0 10px rgba(0,0,0,0.8)"}}>
-      ⚡
-    </div>
-  );
-  
-  const cfg = CARD_CFG[card.type];
-  const isAct = card.type === "action";
-  const aColor = isAct && card.act ? ACT_CLR[card.act] : undefined;
-  const fz = card.val.length > 6 ? 9 : card.val.length > 4 ? 11 : 13;
-  
+  const t = getTheme();
+  const isSpecial = card.type === "action";
+
   return (
-    <div onClick={onClick} style={{
-      width:64,height:92,borderRadius:10,flexShrink:0,position:"relative",
-      background:cfg.bg,
-      border:`2px solid ${selected?"#ffffff":cfg.border}`,
-      boxShadow:selected?`0 0 25px #ffffff, 0 0 15px ${cfg.glow}`:`0 6px 16px rgba(0,0,0,0.6), 0 0 6px ${cfg.glow}`,
-      display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
-      cursor:"pointer",userSelect:"none",
-      transform:selected?"translateY(-12px) scale(1.08)":"translateY(0) scale(1)",
-      transition:"all 0.2s cubic-bezier(0.25, 1, 0.5, 1)",
-    }}>
-      <div style={{position:"absolute",top:4,left:5,fontSize:8,color:isAct?aColor:cfg.border,fontWeight:800,letterSpacing:0.5}}>
-        {card.type==="verb"?"V":card.type==="particle"?"P":"★"}
-      </div>
-      {card.type==="verb" && (
-        <div style={{position:"absolute",top:4,right:4,background:"linear-gradient(135deg,#ffd700,#ffa500)",color:"#000",borderRadius:"50%",width:16,height:16,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:900,boxShadow:"0 2px 4px rgba(0,0,0,0.4)"}}>
-          {card.pts}
+    <div
+      className={`${isSpecial ? "special-card" : ""}`}
+      onClick={faceDown ? undefined : onClick}
+      style={{
+        width: 105,
+        height: 155,
+        borderRadius: 12,
+        border: `2px solid ${selected ? "#fff" : t.border}`,
+        background: t.bg,
+        boxShadow: selected ? "0 0 22px #fff" : `0 0 12px ${t.glow}`,
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "space-between",
+        padding: 10,
+        cursor: faceDown ? "default" : "pointer",
+        userSelect: "none",
+        position: "relative",
+        transition: "transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.2s, border-color 0.2s",
+        transform: selected ? "translateY(-15px) scale(1.05)" : "translateY(0) scale(1)",
+      }}
+    >
+      {faceDown ? (
+        <div style={{ display: "flex", width: "100%", height: "100%", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ fontSize: 24, color: "#1f2d5a", filter: "drop-shadow(0 0 5px #3355ff)" }}>MATRIX</div>
         </div>
-      )}
-      <div style={{fontSize:isAct?24:fz,fontWeight:900,color:isAct?aColor:"#ffffff",lineHeight:1,textAlign:"center",padding:"0 4px",textShadow:"0 2px 4px rgba(0,0,0,0.8)"}}>
-        {isAct && card.act ? ACT_ICON[card.act] : card.val}
-      </div>
-      {isAct && <div style={{fontSize:8,color:aColor,fontWeight:800,marginTop:4,letterSpacing:0.5}}>{card.val}</div>}
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════
-   NOTIFICATION PANEL
-═══════════════════════════════════════════════════════ */
-function NotifPanel({n}: {n: NotifData}) {
-  if (n.pass) return (
-    <div className="pop-in" style={{textAlign:"center"}}>
-      <div style={{fontSize:28,marginBottom:6}}>🔁</div>
-      <div style={{fontSize:12,color:"#a0a0d0",letterSpacing:1}}>Comprando novas cartas e passando turno...</div>
-    </div>
-  );
-  if (n.bl) return (
-    <div className="pop-in" style={{textAlign:"center"}}>
-      <div style={{fontSize:40}}>🛡️</div>
-      <div style={{fontFamily:"'Orbitron',monospace",fontSize:14,color:"#33ff99",marginTop:8,letterSpacing:2,textShadow:"0 0 10px #33ff99"}}>BLOQUEADO! TURNO PULADO.</div>
-    </div>
-  );
-  if (n.noPlay) return (
-    <div className="pop-in" style={{textAlign:"center"}}>
-      <div style={{fontSize:28}}>😤</div>
-      <div style={{fontSize:12,color:"#a0a0d0",marginTop:6}}>Sem combinações válidas! Comprando cartas...</div>
-    </div>
-  );
-  if (n.action && n.act) {
-    const clrs: Record<string, string> = {steal:"#ff3366",swap:"#33ccff",block:"#33ff99",double:"#ffcc00"};
-    const msgs: Record<string, string> = {
-      steal: n.failed ? "Nenhuma carta para roubar!" : `Roubou ${n.pts} pts da combinação (${n.key})!`,
-      swap: "Mãos trocadas completamente!",
-      block: "Oponente bloqueado no próximo turno!",
-      double: "Próxima jogada valerá o DOBRO de pontos!",
-    };
-    return (
-      <div className="pop-in" style={{textAlign:"center",maxWidth:260}}>
-        <div style={{fontSize:38}}>{ACT_ICON[n.act]}</div>
-        <div style={{fontFamily:"'Orbitron',monospace",fontSize:12,color:clrs[n.act],marginTop:8,letterSpacing:1,textShadow:`0 0 8px ${clrs[n.act]}`}}>{msgs[n.act]}</div>
-      </div>
-    );
-  }
-  
-  const label = n.who === "p1" ? "JOGADOR 1" : n.who === "p2" ? "JOGADOR 2" : "CPU";
-  const color = n.valid ? (n.who === "cpu" ? "#ff3366" : "#44ffaa") : "#666688";
-  
-  return (
-    <div className="pop-in" style={{textAlign:"center",maxWidth:280}}>
-      <div style={{fontSize:10,color:"#8080a0",letterSpacing:2,marginBottom:4}}>{label} JOGOU</div>
-      <div style={{fontFamily:"'Orbitron',monospace",fontSize:18,fontWeight:900,color,textShadow:n.valid?`0 0 15px ${color}`:"none",letterSpacing:1,marginBottom:6}}>
-        {n.key}
-      </div>
-      {n.valid ? (
-        <>
-          <div style={{fontSize:11,color:"#b0b0d0",fontStyle:"italic",marginBottom:8,lineHeight:1.4}}>"{n.ex}"</div>
-          <div style={{fontFamily:"'Orbitron',monospace",fontSize:22,fontWeight:900,color,textShadow:`0 0 10px ${color}`}}>+{n.pts} pts</div>
-        </>
       ) : (
-        <div style={{fontSize:12,color:"#ff3366"}}>❌ Combinação inválida! Zero pontos.</div>
+        <>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontSize: 9, fontWeight: 900, color: t.border, letterSpacing: 1 }}>{card.type.toUpperCase()}</span>
+            {card.pts > 0 && <span style={{ fontSize: 12, fontWeight: 900, color: "#fff" }}>+{card.pts}</span>}
+          </div>
+          <div style={{ fontSize: card.val.length > 7 ? 13 : 16, fontWeight: 800, color: "#fff", textAlign: "center", margin: "auto 0", letterSpacing: 0.5 }}>
+            {card.val}
+          </div>
+          <div style={{ fontSize: 8, color: t.txt, textAlign: "right" }}>CYBER_CARD_v1.2</div>
+        </>
       )}
     </div>
   );
-}
+};
 
 /* ═══════════════════════════════════════════════════════
-   SCREENS
+   MAIN COMPONENT
 ═══════════════════════════════════════════════════════ */
-function Menu({onStart}: {onStart: (mode: GameMode, diff: Difficulty) => void}) {
-  const [mode, setMode] = useState<GameMode>("solo");
-  const [diff, setDiff] = useState<Difficulty>("medium");
-
-  return (
-    <div style={{minHeight:"100vh",background:"linear-gradient(160deg,#040410,#090d22,#040410)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,textAlign:"center",fontFamily:"'Rajdhani',sans-serif",color:"#d0d0f0"}}>
-      <div style={{fontFamily:"'Orbitron',monospace",fontSize:14,color:"#ff6600",letterSpacing:6,marginBottom:12,textShadow:"0 0 8px #ff6600"}}>CARD STRATEGY</div>
-      <div style={{fontFamily:"'Orbitron',monospace",fontSize:36,fontWeight:900,color:"#3355ff",textShadow:"0 0 30px rgba(51,85,255,0.6)",letterSpacing:3,marginBottom:2}}>⚔ PHRASAL</div>
-      <div style={{fontFamily:"'Orbitron',monospace",fontSize:36,fontWeight:900,color:"#ff1144",textShadow:"0 0 30px rgba(255,17,68,0.6)",letterSpacing:3,marginBottom:32}}>VERB DUEL</div>
-
-      {/* Mode Selection */}
-      <div style={{display:"flex",gap:12,marginBottom:20}}>
-        <button onClick={()=>setMode("solo")} style={{padding:"10px 20px",background:mode==="solo"?"#3355ff":"#101430",border:mode==="solo"?"1px solid #fff":"1px solid #202550",color:"#fff",borderRadius:8,fontFamily:"'Orbitron',monospace",fontSize:11,cursor:"pointer",transition:"all 0.2s"}}>👤 VS CPU</button>
-        <button onClick={()=>setMode("multi")} style={{padding:"10px 20px",background:mode==="multi"?"#3355ff":"#101430",border:mode==="multi"?"1px solid #fff":"1px solid #202550",color:"#fff",borderRadius:8,fontFamily:"'Orbitron',monospace",fontSize:11,cursor:"pointer",transition:"all 0.2s"}}>👥 2 JOGADORES</button>
-      </div>
-
-      {/* Difficulty Selection for Solo */}
-      {mode === "solo" && (
-        <div style={{display:"flex",gap:8,marginBottom:28,background:"#0a0d24",padding:4,borderRadius:8,border:"1px solid #1a2045"}}>
-          {(["easy","medium","hard"] as const).map(d => (
-            <button key={d} onClick={()=>setDiff(d)} style={{padding:"6px 14px",background:diff===d?"#ff7700":"transparent",border:"none",color:"#fff",borderRadius:6,fontSize:11,fontWeight:700,textTransform:"uppercase",cursor:"pointer",transition:"background 0.2s"}}>
-              {d === "easy" ? "Fácil" : d === "medium" ? "Médio" : "Difícil"}
-            </button>
-          ))}
-        </div>
-      )}
-
-      <div style={{background:"rgba(13,13,30,0.7)",border:"1px solid #1e234a",borderRadius:14,padding:"16px 20px",maxWidth:320,marginBottom:32,textAlign:"left",fontSize:12,lineHeight:1.8,color:"#a0a0c0",boxShadow:"0 10px 25px rgba(0,0,0,0.5)"}}>
-        <div style={{color:"#3355ff",fontFamily:"'Orbitron',monospace",fontSize:11,letterSpacing:2,marginBottom:8}}>REGRAS RÁPIDAS</div>
-        <div>🔵 <b style={{color:"#5588ff"}}>Verbo</b> + 🟠 <b style={{color:"#ff9933"}}>Partícula</b> = Phrasal Verb Válido!</div>
-        <div>🗡️ <b>STEAL</b>: Rouba pontos da última jogada alheia.</div>
-        <div>🔄 <b>SWAP</b>: Troca todas as cartas com o rival.</div>
-        <div>🛡️ <b>BLOCK</b>: Faz o oponente perder o próximo turno.</div>
-        <div>⚡ <b>DOUBLE</b>: Duplica os pontos da sua próxima combinação.</div>
-      </div>
-
-      <button
-        onClick={()=>onStart(mode, diff)}
-        style={{padding:"14px 50px",background:"linear-gradient(135deg,#3355ff,#ff1144)",color:"#fff",border:"none",borderRadius:10,fontFamily:"'Orbitron',monospace",fontSize:14,fontWeight:700,letterSpacing:3,cursor:"pointer",boxShadow:"0 0 25px rgba(51,85,255,0.5)",transition:"transform 0.2s"}}
-        onMouseEnter={(e)=>e.currentTarget.style.transform="scale(1.05)"}
-        onMouseLeave={(e)=>e.currentTarget.style.transform="scale(1)"}
-      >▶ INICIAR DUELO</button>
-    </div>
-  );
-}
-
-function GameOver({ps, cs, mode, onPlay}: {ps: number; cs: number; mode: GameMode; onPlay: () => void}) {
-  const win = ps > cs, tie = ps === cs;
-  let title = tie ? "EMPATE!" : win ? "JOGADOR 1 VENCEU!" : "CPU VENCEU!";
-  if (mode === "multi") {
-    title = tie ? "EMPATE!" : win ? "JOGADOR 1 VENCEU!" : "JOGADOR 2 VENCEU!";
-  }
-  const color = tie ? "#ffcc00" : win ? "#44ffaa" : "#ff3366";
-
-  return (
-    <div style={{minHeight:"100vh",background:"linear-gradient(160deg,#040410,#090d22,#040410)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,textAlign:"center",fontFamily:"'Rajdhani',sans-serif",color:"#d0d0f0"}}>
-      <div style={{fontSize:64,marginBottom:12}}>{tie?"🤝":win?"🏆":"🤖"}</div>
-      <div style={{fontFamily:"'Orbitron',monospace",fontSize:22,fontWeight:900,color,textShadow:`0 0 25px ${color}`,letterSpacing:2,marginBottom:32}}>
-        {title}
-      </div>
-      <div style={{display:"flex",gap:40,marginBottom:40}}>
-        <div style={{textAlign:"center"}}>
-          <div style={{fontSize:11,color:"#707090",letterSpacing:2,marginBottom:4}}>{mode === "multi" ? "JOGADOR 2" : "CPU"}</div>
-          <div style={{fontFamily:"'Orbitron',monospace",fontSize:46,fontWeight:900,color:"#ff3366",textShadow:"0 0 15px rgba(255,51,102,0.5)"}}>{cs}</div>
-        </div>
-        <div style={{display:"flex",alignItems:"center",color:"#303560",fontFamily:"'Orbitron',monospace",fontSize:16,fontWeight:700}}>VS</div>
-        <div style={{textAlign:"center"}}>
-          <div style={{fontSize:11,color:"#707090",letterSpacing:2,marginBottom:4}}>JOGADOR 1</div>
-          <div style={{fontFamily:"'Orbitron',monospace",fontSize:46,fontWeight:900,color:"#44ffaa",textShadow:"0 0 15px rgba(68,255,170,0.5)"}}>{ps}</div>
-        </div>
-      </div>
-      <button onClick={onPlay} style={{padding:"14px 40px",background:"linear-gradient(135deg,#3355ff,#ff7700)",color:"#fff",border:"none",borderRadius:10,fontFamily:"'Orbitron',monospace",fontSize:13,fontWeight:700,letterSpacing:2,cursor:"pointer",boxShadow:"0 0 20px rgba(255,119,0,0.4)"}}>
-        🔄 JOGAR NOVAMENTE
-      </button>
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════
-   MAIN GAME COMPONENT
-═══════════════════════════════════════════════════════ */
-const MAX_ROUNDS = 10;
-
-export default function PhrasalVerbDuel() {
-  const [screen, setScreen] = useState<"menu" | "game" | "over">("menu");
+export default function App() {
   const [gameMode, setGameMode] = useState<GameMode>("solo");
   const [difficulty, setDifficulty] = useState<Difficulty>("medium");
-  
+  const [phase, setPhase] = useState<GamePhase>("menu");
+
   const [deck, setDeck] = useState<CardItem[]>([]);
   const [p1Hand, setP1Hand] = useState<CardItem[]>([]);
   const [p2Hand, setP2Hand] = useState<CardItem[]>([]);
-  const [p1Score, setP1Score] = useState<number>(0);
-  const [p2Score, setP2Score] = useState<number>(0);
-  const [round, setRound] = useState<number>(1);
-  const [phase, setPhase] = useState<GamePhase>("p1");
-  
-  const [selV, setSelV] = useState<CardItem | null>(null);
-  const [selP, setSelP] = useState<CardItem | null>(null);
-  const [notif, setNotif] = useState<NotifData | null>(null);
-  
-  const [p1Blocked, setP1Blocked] = useState<boolean>(false);
-  const [p2Blocked, setP2Blocked] = useState<boolean>(false);
-  const [p1Dbl, setP1Dbl] = useState<boolean>(false);
-  const [p2Dbl, setP2Dbl] = useState<boolean>(false);
+  const [p1Score, setP1Score] = useState(0);
+  const [p2Score, setP2Score] = useState(0);
+  const [round, setRound] = useState(1);
 
-  const ref = useRef<GameRefState>({ deck: [], p1Hand: [], p2Hand: [], p1Score: 0, p2Score: 0, round: 1, p1Blocked: false, p2Blocked: false, p1Dbl: false, p2Dbl: false });
-  ref.current = { deck, p1Hand, p2Hand, p1Score, p2Score, round, p1Blocked, p2Blocked, p1Dbl, p2Dbl };
+  const [p1Blocked, setP1Blocked] = useState(false);
+  const [p2Blocked, setP2Blocked] = useState(false);
+  const [p1Dbl, setP1Dbl] = useState(false);
+  const [p2Dbl, setP2Dbl] = useState(false);
+
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [notif, setNotif] = useState<NotifData | null>(null);
+  const [tourRun, setTourRun] = useState(false);
+
+  const tourSteps: Step[] = [
+    {
+      target: ".player-hand",
+      content: "Aqui ficam as cartas da sua mão. Clique nelas para selecionar e formar combos.",
+      disableBeacon: true,
+    },
+    {
+      target: ".special-card",
+      content: "Cartas de Ação (STEAL, SWAP, BLOCK, DOUBLE) aplicam efeitos cibernéticos imediatamente.",
+      disableBeacon: true,
+    },
+    {
+      target: ".play-btn",
+      content: "Após selecionar Verbo + Partícula ou uma única Ação, clique aqui para lançar a jogada.",
+      disableBeacon: true,
+    }
+  ];
 
   useEffect(() => {
-    const s = document.createElement("style");
-    s.textContent = `
-      @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Orbitron:wght@600;800;900&display=swap');
-      * { box-sizing: border-box; }
-      .pop-in { animation: popIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
-      @keyframes popIn { 0% { opacity:0; transform:scale(0.85); } 100% { opacity:1; transform:scale(1); } }
-      @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
-    `;
-    document.head.appendChild(s);
+    const fresh = localStorage.getItem("cyber_phrasal_tour_done");
+    if (!fresh) {
+      setTourRun(true);
+    }
   }, []);
 
-  useEffect(() => {
-    if (phase !== "cpu") return;
-    const t = setTimeout(doCpuTurn, 1200);
-    return () => clearTimeout(t);
-  }, [phase]);
+  const handleTourEnd = (data: any) => {
+    if (["finished", "skipped"].includes(data.status)) {
+      localStorage.setItem("cyber_phrasal_tour_done", "true");
+      setTourRun(false);
+    }
+  };
 
-  function startDuel(mode: GameMode, diff: Difficulty) {
-    _uid = 0;
-    const d = buildDeck();
+  const startGame = (mode: GameMode, diff: Difficulty) => {
     setGameMode(mode);
     setDifficulty(diff);
-    setP1Hand(d.slice(0, 6));
-    setP2Hand(d.slice(6, 12));
-    setDeck(d.slice(12));
+    const newDeck = createDeck();
+    const p1 = newDeck.splice(0, 5);
+    const p2 = newDeck.splice(0, 5);
+
+    setDeck(newDeck);
+    setP1Hand(p1);
+    setP2Hand(p2);
     setP1Score(0);
     setP2Score(0);
     setRound(1);
-    setPhase("p1");
-    setSelV(null);
-    setSelP(null);
-    setNotif(null);
     setP1Blocked(false);
     setP2Blocked(false);
     setP1Dbl(false);
     setP2Dbl(false);
-    setScreen("game");
-  }
+    setSelectedIds([]);
+    setNotif(null);
+    setPhase("p1");
+  };
 
-  function drawN(d: CardItem[], n: number) { return { drawn: d.slice(0, n), rest: d.slice(n) }; }
+  const selectCard = (id: number) => {
+    if (selectedIds.includes(id)) {
+      setSelectedIds(selectedIds.filter(x => x !== id));
+    } else {
+      setSelectedIds([...selectedIds, id]);
+    }
+  };
 
-  function advanceTurn(currentPhase: GamePhase) {
-    const state = ref.current;
-    if (gameMode === "solo") {
-      if (currentPhase === "p1") {
-        if (state.p2Blocked) {
-          setP2Blocked(false);
-          setNotif({ who: "cpu", bl: true });
-          setTimeout(() => { setNotif(null); finishRound(); }, 1800);
+  const passTurn = () => {
+    setSelectedIds([]);
+    const current = phase;
+
+    if (gameMode === "multi") {
+      if (current === "p1") {
+        setPhase("p2");
+        setNotif({ who: "p1", pass: true });
+      } else {
+        advanceRound();
+      }
+    } else {
+      setPhase("cpu");
+      setNotif({ who: "p1", pass: true });
+    }
+  };
+
+  const advanceRound = () => {
+    if (round >= 5) {
+      setPhase("end");
+      return;
+    }
+
+    let currentDeck = [...deck];
+    const fillHand = (hand: CardItem[]) => {
+      const needed = 5 - hand.length;
+      const added: CardItem[] = [];
+      for (let i = 0; i < needed; i++) {
+        if (currentDeck.length > 0) added.push(currentDeck.shift()!);
+      }
+      return [...hand, ...added];
+    };
+
+    const nextP1 = fillHand(p1Hand);
+    const nextP2 = fillHand(p2Hand);
+
+    setDeck(currentDeck);
+    setP1Hand(nextP1);
+    setP2Hand(nextP2);
+    setP1Blocked(false);
+    setP2Blocked(false);
+    setRound(prev => prev + 1);
+    setPhase("p1");
+  };
+
+  // EXECUTA AI JOGADA CIBERNETICA
+  useEffect(() => {
+    if (phase === "cpu" && gameMode === "solo") {
+      const timer = setTimeout(() => {
+        executeCPUTurn();
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [phase]);
+
+  const executeCPUTurn = () => {
+    if (p2Blocked) {
+      setNotif({ who: "cpu", bl: true });
+      advanceRound();
+      return;
+    }
+
+    // CHANCE DE PASSAR NO FACIL
+    if (difficulty === "easy" && Math.random() < 0.4) {
+      setNotif({ who: "cpu", pass: true });
+      advanceRound();
+      return;
+    }
+
+    const verbs = p2Hand.filter(c => c.type === "verb");
+    const parts = p2Hand.filter(c => c.type === "particle");
+    const acts = p2Hand.filter(c => c.type === "action");
+
+    // BUSCA DE COMBOS VALIDOS
+    let bestCombo: { v: CardItem; p: CardItem; key: string; score: number } | null = null;
+    for (const v of verbs) {
+      for (const p of parts) {
+        const key = `${v.val}_${p.val}`;
+        if (VALID_COMBOS[key]) {
+          const score = v.pts + p.pts + VALID_COMBOS[key].bonus;
+          if (!bestCombo || score > bestCombo.score) {
+            bestCombo = { v, p, key, score };
+          }
+        }
+      }
+    }
+
+    // LOGICA ESTRATEGICA REVOLUCIONARIA (DIFICIL)
+    if (difficulty === "hard") {
+      const hasSteal = acts.find(c => c.act === "steal");
+      const hasBlock = acts.find(c => c.act === "block");
+      const hasDouble = acts.find(c => c.act === "double");
+
+      if (hasSteal && p1Score > p2Score + 5) {
+        applyActionCPU(hasSteal);
+        return;
+      }
+      if (hasBlock && p1Score > p2Score && !p1Blocked) {
+        applyActionCPU(hasBlock);
+        return;
+      }
+      if (hasDouble && bestCombo && bestCombo.score >= 7) {
+        setP2Dbl(true);
+        const comboPts = bestCombo.score * 2;
+        setP2Score(prev => prev + comboPts);
+        setP2Hand(prev => prev.filter(c => c.id !== bestCombo!.v.id && c.id !== bestCombo!.p.id && c.id !== hasDouble.id));
+        setNotif({ who: "cpu", valid: true, key: bestCombo.key, ex: VALID_COMBOS[bestCombo.key].ex, pts: comboPts });
+        setP2Dbl(false);
+        advanceRound();
+        return;
+      }
+    }
+
+    // COMPORTAMENTO MEDIO / PADRAO (SE HIGHEST COMBO EXISTIR)
+    if (bestCombo && (difficulty === "medium" || difficulty === "hard" || Math.random() > 0.3)) {
+      let multiplier = p2Dbl ? 2 : 1;
+      const finalPts = bestCombo.score * multiplier;
+      setP2Score(prev => prev + finalPts);
+      setP2Hand(prev => prev.filter(c => c.id !== bestCombo!.v.id && c.id !== bestCombo!.p.id));
+      setNotif({ who: "cpu", valid: true, key: bestCombo.key, ex: VALID_COMBOS[bestCombo.key].ex, pts: finalPts });
+      setP2Dbl(false);
+      advanceRound();
+      return;
+    }
+
+    // EXECUÇÃO DE AÇÃO RESERVA CASO NÃO HOUVER COMBO VÁLIDO
+    if (acts.length > 0) {
+      applyActionCPU(acts[0]);
+      return;
+    }
+
+    // SE NAO CONSEGUIR JOGAR NADA, APENAS PASSA
+    setNotif({ who: "cpu", pass: true });
+    advanceRound();
+  };
+
+  const applyActionCPU = (card: CardItem) => {
+    setP2Hand(prev => prev.filter(c => c.id !== card.id));
+    if (card.act === "block") {
+      setP1Blocked(true);
+      setNotif({ who: "cpu", action: true, act: "block" });
+      advanceRound();
+    } else if (card.act === "steal") {
+      const amt = Math.min(p1Score, 4);
+      setP1Score(p => p - amt);
+      setP2Score(p => p + amt);
+      setNotif({ who: "cpu", action: true, act: "steal", pts: amt });
+      advanceRound();
+    } else if (card.act === "swap") {
+      const s1 = p1Score;
+      setP1Score(p2Score);
+      setP2Score(s1);
+      setNotif({ who: "cpu", action: true, act: "swap" });
+      advanceRound();
+    } else if (card.act === "double") {
+      setP2Dbl(true);
+      setNotif({ who: "cpu", action: true, act: "double" });
+      advanceRound();
+    }
+  };
+
+  // LANÇAR JOGADA DO JOGADOR ATUAL
+  const executePlayerTurn = () => {
+    const currentHand = phase === "p1" ? p1Hand : p2Hand;
+    const setHand = phase === "p1" ? setP1Hand : setP2Hand;
+    const isBlocked = phase === "p1" ? p1Blocked : p2Blocked;
+
+    if (isBlocked) {
+      setNotif({ who: phase, bl: true });
+      setSelectedIds([]);
+      if (gameMode === "multi" && phase === "p1") {
+        setPhase("p2");
+      } else {
+        advanceRound();
+      }
+      return;
+    }
+
+    const selected = currentHand.filter(c => selectedIds.includes(c.id));
+
+    if (selected.length === 1 && selected[0].type === "action") {
+      const actCard = selected[0];
+      setHand(prev => prev.filter(c => c.id !== actCard.id));
+      setSelectedIds([]);
+
+      // FIX LOGICA DE BLOQUEIO INTERCEPTADA IMEDIATAMENTE (CORREÇÃO DE BUG DO FLUXO)
+      if (actCard.act === "block") {
+        if (phase === "p1") setP2Blocked(true);
+        else setP1Blocked(true);
+
+        setNotif({ who: phase, action: true, act: "block" });
+        // Redireciona o fluxo sem travar turnos
+        if (gameMode === "multi" && phase === "p1") {
+          setPhase("p2");
+        } else if (gameMode === "multi" && phase === "p2") {
+          advanceRound();
         } else {
           setPhase("cpu");
         }
-      } else {
-        finishRound();
+        return;
       }
-    } else {
-      // Multiplayer Turn Switch
-      if (currentPhase === "p1") {
-        if (state.p2Blocked) {
-          setP2Blocked(false);
-          setNotif({ who: "p2", bl: true });
-          setTimeout(() => { setNotif(null); finishRound(); }, 1800);
+
+      // OUTRAS AÇÕES
+      if (actCard.act === "double") {
+        if (phase === "p1") setP1Dbl(true); else setP2Dbl(true);
+        setNotif({ who: phase, action: true, act: "double" });
+      } else if (actCard.act === "steal") {
+        if (phase === "p1") {
+          const amt = Math.min(p2Score, 4);
+          setP2Score(p => p - amt); setP1Score(p => p + amt);
+          setNotif({ who: "p1", action: true, act: "steal", pts: amt });
         } else {
-          setPhase("p2");
+          const amt = Math.min(p1Score, 4);
+          setP1Score(p => p - amt); setP2Score(p => p + amt);
+          setNotif({ who: "p2", action: true, act: "steal", pts: amt });
         }
+      } else if (actCard.act === "swap") {
+        const temp = p1Score;
+        setP1Score(p2Score);
+        setP2Score(temp);
+        setNotif({ who: phase, action: true, act: "swap" });
+      }
+
+      if (gameMode === "multi" && phase === "p1") {
+        setPhase("p2");
+      } else if (gameMode === "multi" && phase === "p2") {
+        advanceRound();
       } else {
-        finishRound();
+        setPhase("cpu");
       }
-    }
-  }
-
-  function finishRound() {
-    const next = ref.current.round + 1;
-    if (next > MAX_ROUNDS) {
-      setScreen("over");
-    } else {
-      setRound(next);
-      if (ref.current.p1Blocked) {
-        setP1Blocked(false);
-        setNotif({ who: "p1", bl: true });
-        setTimeout(() => {
-          setNotif(null);
-          setPhase(gameMode === "solo" ? "cpu" : "p2");
-        }, 1800);
-      } else {
-        setPhase("p1");
-      }
-    }
-  }
-
-  function submitPlay() {
-    if (!selV || !selP || (phase !== "p1" && phase !== "p2")) return;
-    const isP1 = phase === "p1";
-    const currentHand = isP1 ? p1Hand : p2Hand;
-    const currentDbl = isP1 ? p1Dbl : p2Dbl;
-
-    const key = `${selV.val} ${selP.val}`;
-    const valid = !!PV[key];
-    const ex = PV[key];
-
-    setSelV(null);
-    setSelP(null);
-    setPhase("animating");
-
-    const filteredHand = currentHand.filter(c => c.id !== selV.id && c.id !== selP.id);
-    const { drawn, rest } = drawN(deck, 2);
-
-    let pts = 0;
-    if (valid) {
-      pts = selV.pts * (currentDbl ? 2 : 1);
-      if (isP1) {
-        setP1Score(s => s + pts);
-        setP1Dbl(false);
-      } else {
-        setP2Score(s => s + pts);
-        setP2Dbl(false);
-      }
-    }
-
-    if (isP1) setP1Hand([...filteredHand, ...drawn]);
-    else setP2Hand([...filteredHand, ...drawn]);
-    
-    setDeck(rest);
-    setNotif({ who: phase, valid, key, ex, pts });
-
-    setTimeout(() => {
-      setNotif(null);
-      advanceTurn(phase);
-    }, 2500);
-  }
-
-  function doCpuTurn() {
-    const { p2Hand: cpuHand, deck: d, p1Score: p1Pts, p2Score: cpuPts } = ref.current;
-    const decision = calculateCpuPlay(cpuHand, difficulty, p1Pts, cpuPts);
-
-    if (decision?.type === "combo") {
-      const { v, p } = decision;
-      const filtered = cpuHand.filter(c => c.id !== v.id && c.id !== p.id);
-      const { drawn, rest } = drawN(d, 2);
-      
-      let pts = v.pts * (p2Dbl ? 2 : 1);
-      setP2Score(s => s + pts);
-      setP2Dbl(false);
-      setP2Hand([...filtered, ...drawn]);
-      setDeck(rest);
-      setNotif({ who: "cpu", valid: true, key: `${v.val} ${p.val}`, ex: PV[`${v.val} ${p.val}`], pts });
-    } else if (decision?.type === "action") {
-      const { card } = decision;
-      const filtered = cpuHand.filter(c => c.id !== card.id);
-      const { drawn, rest } = drawN(d, 1);
-      setP2Hand([...filtered, ...drawn]);
-      setDeck(rest);
-
-      const notifData: NotifData = { who: "cpu", action: true, act: card.act };
-      if (card.act === "steal") {
-        const lastP1Play = calculateCpuPlay(p1Hand, "hard", 0, 0); // Moca pra pegar valor
-        if (lastP1Play && lastP1Play.type === "combo") {
-          setP2Score(s => s + lastP1Play.v.pts);
-          notifData.pts = lastP1Play.v.pts;
-          notifData.key = `${lastP1Play.v.val} ${lastP1Play.p.val}`;
-        } else {
-          notifData.failed = true;
-        }
-      } else if (card.act === "swap") {
-        const p1HandTmp = ref.current.p1Hand;
-        setP1Hand([...filtered]);
-        setP2Hand([...p1HandTmp]);
-      } else if (card.act === "block") {
-        setP1Blocked(true);
-      } else if (card.act === "double") {
-        setP2Dbl(true);
-      }
-      setNotif(notifData);
-    } else {
-      const { drawn, rest } = drawN(d, 2);
-      setP2Hand(h => [...h.slice(2), ...drawn]);
-      setDeck(rest);
-      setNotif({ who: "cpu", noPlay: true });
-    }
-
-    setTimeout(() => {
-      setNotif(null);
-      advanceTurn("cpu");
-    }, 2500);
-  }
-
-  function handleCardClick(card: CardItem) {
-    if (phase !== "p1" && phase !== "p2") return;
-    if (card.type === "action") {
-      triggerActionCard(card);
       return;
     }
-    if (card.type === "verb") setSelV(p => p?.id === card.id ? null : card);
-    else setSelP(p => p?.id === card.id ? null : card);
-  }
 
-  function triggerActionCard(card: CardItem) {
-    const isP1 = phase === "p1";
-    const currentHand = isP1 ? p1Hand : p2Hand;
-    const targetHand = isP1 ? p2Hand : p1Hand;
-    
-    const filteredHand = currentHand.filter(c => c.id !== card.id);
-    const { drawn, rest } = drawN(deck, 1);
-    
-    const notifData: NotifData = { who: phase, action: true, act: card.act };
+    // VERIFICADOR DE PHRASAL VERBS COMBOS
+    const verb = selected.find(c => c.type === "verb");
+    const part = selected.find(c => c.type === "particle");
 
-    if (card.act === "steal") {
-      const targetCombo = calculateCpuPlay(targetHand, "hard", 0, 0);
-      if (targetCombo && targetCombo.type === "combo") {
-        const pts = targetCombo.v.pts;
-        if (isP1) setP1Score(s => s + pts); else setP2Score(s => s + pts);
-        notifData.pts = pts;
-        notifData.key = `${targetCombo.v.val} ${targetCombo.p.val}`;
+    if (selected.length === 2 && verb && part) {
+      const comboKey = `${verb.val}_${part.val}`;
+      const hasMatch = VALID_COMBOS[comboKey];
+
+      setHand(prev => prev.filter(c => !selectedIds.includes(c.id)));
+      setSelectedIds([]);
+
+      if (hasMatch) {
+        const base = verb.pts + part.pts + hasMatch.bonus;
+        const currentDbl = phase === "p1" ? p1Dbl : p2Dbl;
+        const finalPts = base * (currentDbl ? 2 : 1);
+
+        if (phase === "p1") {
+          setP1Score(p => p + finalPts);
+          setP1Dbl(false);
+        } else {
+          setP2Score(p => p + finalPts);
+          setP2Dbl(false);
+        }
+
+        setNotif({ who: phase, valid: true, key: comboKey, ex: hasMatch.ex, pts: finalPts });
       } else {
-        notifData.failed = true;
+        setNotif({ who: phase, valid: false, failed: true });
       }
-    } else if (card.act === "swap") {
-      if (isP1) {
-        setP1Hand([...targetHand]);
-        setP2Hand([...filteredHand]);
+
+      if (gameMode === "multi" && phase === "p1") {
+        setPhase("p2");
+      } else if (gameMode === "multi" && phase === "p2") {
+        advanceRound();
       } else {
-        setP2Hand([...targetHand]);
-        setP1Hand([...filteredHand]);
+        setPhase("cpu");
       }
-    } else if (card.act === "block") {
-      if (isP1) setP2Blocked(true); else setP1Blocked(true);
-    } else if (card.act === "double") {
-      if (isP1) setP1Dbl(true); else setP2Dbl(true);
+    } else {
+      setNotif({ noPlay: true });
     }
+  };
 
-    if (card.act !== "swap") {
-      if (isP1) setP1Hand([...filteredHand, ...drawn]);
-      else setP2Hand([...filteredHand, ...drawn]);
-    }
+  const selectedCards = (phase === "p1" ? p1Hand : p2Hand).filter(c => selectedIds.includes(c.id));
+  const isVerb = selectedCards.find(c => c.type === "verb");
+  const isPart = selectedCards.find(c => c.type === "particle");
+  const isAct = selectedCards.find(c => c.type === "action");
 
-    setDeck(rest);
-    setSelV(null);
-    setSelP(null);
-    setNotif(notifData);
-    setPhase("animating");
-
-    setTimeout(() => {
-      setNotif(null);
-      advanceTurn(phase);
-    }, 2200);
-  }
-
-  function passTurn() {
-    if (phase !== "p1" && phase !== "p2") return;
-    const isP1 = phase === "p1";
-    const currentHand = isP1 ? p1Hand : p2Hand;
-    const { drawn, rest } = drawN(deck, 2);
-
-    if (isP1) setP1Hand([...currentHand.slice(2), ...drawn]);
-    else setP2Hand([...currentHand.slice(2), ...drawn]);
-
-    setDeck(rest);
-    setSelV(null);
-    setSelP(null);
-    setNotif({ pass: true });
-    setPhase("animating");
-
-    setTimeout(() => {
-      setNotif(null);
-      advanceTurn(phase);
-    }, 1600);
-  }
-
-  if (screen === "menu") return <Menu onStart={startDuel} />;
-  if (screen === "over") return <GameOver ps={p1Score} cs={p2Score} mode={gameMode} onPlay={() => setScreen("menu")} />;
-
-  const currentActiveHand = phase === "p1" ? p1Hand : p2Hand;
-  const showOpponentCards = gameMode === "multi"; // Local Pass&Play esconde/revela dependendo do design tático.
-  const pvKey = selV && selP ? `${selV.val} ${selP.val}` : null;
-  const pvValid = pvKey ? !!PV[pvKey] : null;
+  const pvValid = (selectedCards.length === 2 && !!isVerb && !!isPart) || (selectedCards.length === 1 && !!isAct);
 
   return (
-    <div style={{minHeight:"100vh",background:"linear-gradient(160deg,#040414,#0b0f26,#040414)",display:"flex",flexDirection:"column",fontFamily:"'Rajdhani',sans-serif",color:"#d0d0f0",overflow:"hidden"}}>
-      
-      {/* Top Header & Progress */}
-      <div style={{padding:"10px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",borderBottom:"1px solid #141938",background:"rgba(6,6,21,0.4)"}}>
-        <span style={{fontFamily:"'Orbitron',monospace",fontSize:11,color:"#3355ff",letterSpacing:2,textShadow:"0 0 10px rgba(51,85,255,0.4)"}}>⚔ PHRASAL DUEL</span>
-        <div style={{flex:1,margin:"0 16px",height:4,background:"#101435",borderRadius:2,overflow:"hidden"}}>
-          <div style={{height:"100%",background:"linear-gradient(90deg,#3355ff,#ff1144)",width:`${(round/MAX_ROUNDS)*100}%`,transition:"width 0.4s ease"}}/>
-        </div>
-        <span style={{fontFamily:"'Orbitron',monospace",fontSize:11,color:"#a0a0c0"}}>RODADA {round}/{MAX_ROUNDS}</span>
-      </div>
+    <div style={{
+      minHeight: "100vh", background: "#060913", color: "#fff", fontFamily: "'Rajdhani', sans-serif",
+      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 20, overflowX: "hidden"
+    }}>
+      <Joyride steps={tourSteps} run={tourRun} callback={handleTourEnd} continuous showSkipButton styles={{
+        options: { primaryColor: "#ff1144", backgroundColor: "#0d1127", textColor: "#fff", arrowColor: "#0d1127" }
+      }} />
 
-      {/* Scoreboard */}
-      <div style={{display:"flex",justifyContent:"space-around",alignItems:"center",padding:"12px 16px",background:"rgba(10,14,38,0.3)"}}>
-        <div style={{textAlign:"center",minWidth:90}}>
-          <div style={{fontSize:9,letterSpacing:1.5,color:"#8080a0",marginBottom:2}}>{gameMode === "multi" ? "JOGADOR 2" : "CPU"}</div>
-          <div style={{fontFamily:"'Orbitron',monospace",fontSize:32,fontWeight:900,color:"#ff3366",textShadow:"0 0 15px rgba(255,51,102,0.4)"}}>{p2Score}</div>
-          {p2Blocked && <div style={{fontSize:9,color:"#33ff99",animation:"pulse 1s infinite"}}>🛡️ BLOQUEADO</div>}
-          {p2Dbl && <div style={{fontSize:9,color:"#ffcc00",animation:"pulse 1s infinite"}}>⚡ DOUBLE</div>}
-        </div>
-        <div style={{color:"#1f2456",fontFamily:"'Orbitron',monospace",fontSize:14,fontWeight:900}}>VS</div>
-        <div style={{textAlign:"center",minWidth:90}}>
-          <div style={{fontSize:9,letterSpacing:1.5,color:"#8080a0",marginBottom:2}}>JOGADOR 1</div>
-          <div style={{fontFamily:"'Orbitron',monospace",fontSize:32,fontWeight:900,color:"#44ffaa",textShadow:"0 0 15px rgba(68,255,170,0.4)"}}>{p1Score}</div>
-          {p1Blocked && <div style={{fontSize:9,color:"#33ff99",animation:"pulse 1s infinite"}}>🛡️ BLOQUEADO</div>}
-          {p1Dbl && <div style={{fontSize:9,color:"#ffcc00",animation:"pulse 1s infinite"}}>⚡ DOUBLE</div>}
-        </div>
-      </div>
+      {phase === "menu" ? (
+        <div style={{
+          maxWidth: 450, width: "100%", background: "#0a0e20", padding: 40, borderRadius: 24,
+          border: "2px solid #3355ff", boxShadow: "0 0 40px rgba(51,85,255,0.25)", textAlign: "center"
+        }}>
+          <h1 style={{ fontSize: 38, fontWeight: 900, margin: "0 0 10px 0", letterSpacing: 2, color: "#fff", textShadow: "0 0 15px #3355ff" }}>PHRASAL_MATRIX</h1>
+          <p style={{ color: "#7185b3", fontSize: 14, margin: "0 0 35px 0" }}>Hackee a linguagem e domine os Phrasal Verbs no ciberespaço.</p>
 
-      {/* Enemy / Opponent Hand */}
-      <div style={{padding:"8px 12px",background:"rgba(0,0,0,0.15)"}}>
-        <div style={{fontSize:9,color:"#4a5080",letterSpacing:1,textAlign:"center",marginBottom:6}}>MÃO DO OPONENTE ({p2Hand.length} cartas)</div>
-        <div style={{display:"flex",gap:6,justifyContent:"center",flexWrap:"wrap"}}>
-          {p2Hand.map(c => <Card key={c.id} card={c} faceDown={!showOpponentCards || phase === "p1"} />)}
-        </div>
-      </div>
-
-      {/* Center Dynamic Battle Arena */}
-      <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:20,minHeight:140,borderTop:"1px solid #101435",borderBottom:"1px solid #101435",background:"rgba(5,7,22,0.4)"}}>
-        {notif ? (
-          <NotifPanel n={notif}/>
-        ) : phase === "cpu" ? (
-          <div style={{textAlign:"center"}}>
-            <div style={{fontSize:32,animation:"pulse 0.8s infinite"}}>🤖</div>
-            <div style={{fontFamily:"'Orbitron',monospace",fontSize:11,color:"#ff3366",letterSpacing:2,marginTop:6}}>CPU PENSANDO...</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 15 }}>
+            <button onClick={() => startGame("solo", "easy")} style={{
+              padding: 16, borderRadius: 12, border: "1px solid #ff7700", background: "rgba(255,119,0,0.05)",
+              color: "#ff7700", fontWeight: 700, cursor: "pointer", fontSize: 14, transition: "all 0.2s"
+            }} onMouseEnter={e => e.currentTarget.style.background = "rgba(255,119,0,0.15)"} onMouseLeave={e => e.currentTarget.style.background = "rgba(255,119,0,0.05)"}>
+              SOLO MODE : NÍVEL FÁCIL
+            </button>
+            <button onClick={() => startGame("solo", "medium")} style={{
+              padding: 16, borderRadius: 12, border: "1px solid #3355ff", background: "rgba(51,85,255,0.05)",
+              color: "#3355ff", fontWeight: 700, cursor: "pointer", fontSize: 14, transition: "all 0.2s"
+            }} onMouseEnter={e => e.currentTarget.style.background = "rgba(51,85,255,0.15)"} onMouseLeave={e => e.currentTarget.style.background = "rgba(51,85,255,0.05)"}>
+              SOLO MODE : NÍVEL MÉDIO
+            </button>
+            <button onClick={() => startGame("solo", "hard")} style={{
+              padding: 16, borderRadius: 12, border: "1px solid #ff1144", background: "rgba(255,17,68,0.05)",
+              color: "#ff1144", fontWeight: 700, cursor: "pointer", fontSize: 14, transition: "all 0.2s"
+            }} onMouseEnter={e => e.currentTarget.style.background = "rgba(255,17,68,0.15)"} onMouseLeave={e => e.currentTarget.style.background = "rgba(255,17,68,0.05)"}>
+              SOLO MODE : NÍVEL DIFÍCIL (AI STRATEGY)
+            </button>
+            <div style={{ height: 1, background: "#1a223f", margin: "10px 0" }} />
+            <button onClick={() => startGame("multi", "medium")} style={{
+              padding: 18, borderRadius: 12, border: "none", background: "linear-gradient(135deg,#3355ff,#ff1144)",
+              color: "#fff", fontWeight: 800, cursor: "pointer", fontSize: 15, boxShadow: "0 0 25px rgba(255,17,68,0.3)"
+            }}>
+              💥 2 JOGADORES LOCAL (PASS & PLAY)
+            </button>
           </div>
-        ) : (
-          <div style={{textAlign:"center"}} className="pop-in">
-            <div style={{fontFamily:"'Orbitron',monospace",fontSize:12,color:"#ff7700",letterSpacing:2,marginBottom:4,fontWeight:800}}>
-              TURNO ATUAL: {phase === "p1" ? "JOGADOR 1" : "JOGADOR 2"}
+        </div>
+      ) : phase === "end" ? (
+        <div style={{ textAlign: "center", background: "#0a0e20", padding: 40, borderRadius: 24, border: "2px solid #ff1144" }}>
+          <h2 style={{ fontSize: 32, fontWeight: 900, color: "#fff", textShadow: "0 0 10px #ff1144" }}>RODADAS ENCERRADAS</h2>
+          <div style={{ display: "flex", gap: 50, margin: "30px 0", justifyContent: "center" }}>
+            <div>
+              <p style={{ color: "#7185b3", margin: 0 }}>JOGADOR 1</p>
+              <h3 style={{ fontSize: 44, color: "#3355ff" }}>{p1Score} pts</h3>
             </div>
-            {pvKey ? (
-              <div style={{marginTop:8}}>
-                <div style={{fontFamily:"'Orbitron',monospace",fontSize:20,fontWeight:900,color:pvValid?"#44ffaa":"#ff3366",textShadow:`0 0 15px ${pvValid?"#44ffaa":"#ff3366"}`}}>{pvKey}</div>
-                <div style={{fontSize:11,color:"#8080a0",marginTop:4}}>{pvValid?"✓ Válido! Clique em JOGAR":"✗ Combinação inválida"}</div>
+            <div>
+              <p style={{ color: "#7185b3", margin: 0 }}>{gameMode === "solo" ? "CPU" : "JOGADOR 2"}</p>
+              <h3 style={{ fontSize: 44, color: "#ff7700" }}>{p2Score} pts</h3>
+            </div>
+          </div>
+          <h1 style={{ color: "#fff", fontSize: 24, marginBottom: 30 }}>
+            {p1Score > p2Score ? "🏆 JOGADOR 1 VENCEU!" : p2Score > p1Score ? (gameMode === "solo" ? "🤖 CPU VENCEU!" : "🏆 JOGADOR 2 VENCEU!") : "🤝 EMPATE TÉCNICO!"}
+          </h1>
+          <button onClick={() => setPhase("menu")} style={{
+            padding: "14px 28px", border: "none", borderRadius: 8, background: "#fff", color: "#000", fontWeight: 700, cursor: "pointer"
+          }}>VOLTAR AO MENU</button>
+        </div>
+      ) : (
+        <div style={{ width: "100%", maxWidth: 1100, display: "flex", flexDirection: "column", gap: 20 }}>
+          {/* HEADER PLACAR */}
+          <div style={{
+            display: "flex", justifyContent: "space-between", alignItems: "center", background: "#0a0e20",
+            padding: "16px 30px", borderRadius: 16, border: "1px solid #1f2a4e"
+          }}>
+            <div>
+              <span style={{ color: "#7185b3", fontSize: 12, fontWeight: 700 }}>MODO: {gameMode.toUpperCase()} ({difficulty.toUpperCase()})</span>
+              <h2 style={{ margin: 0, fontSize: 24, fontWeight: 800 }}>RODADA <span style={{ color: "#ff1144" }}>{round}/5</span></h2>
+            </div>
+            <div style={{ display: "flex", gap: 40, alignItems: "center" }}>
+              <div style={{ textAlign: "right" }}>
+                <div style={{ color: "#3355ff", fontWeight: 700, fontSize: 12 }}>JOGADOR 1 {p1Blocked && "🚫"} {p1Dbl && "💥"}</div>
+                <div style={{ fontSize: 28, fontWeight: 900 }}>{p1Score} <span style={{ fontSize: 14, color: "#7185b3" }}>PTS</span></div>
               </div>
+              <div style={{ fontSize: 20, color: "#1f2a4e", fontWeight: 900 }}>VS</div>
+              <div>
+                <div style={{ color: "#ff7700", fontWeight: 700, fontSize: 12 }}>{gameMode === "solo" ? "CPU" : "JOGADOR 2"} {p2Blocked && "🚫"} {p2Dbl && "💥"}</div>
+                <div style={{ fontSize: 28, fontWeight: 900 }}>{p2Score} <span style={{ fontSize: 14, color: "#7185b3" }}>PTS</span></div>
+              </div>
+            </div>
+          </div>
+
+          {/* NOTIFICAÇÃO DE FEEDBACK VISUAL */}
+          {notif && (
+            <div style={{
+              background: "#0d152d", borderLeft: `4px solid ${notif.failed ? "#ff1144" : "#00ffaa"}`,
+              padding: 16, borderRadius: 8, display: "flex", justifyContent: "space-between", alignItems: "center",
+              animation: "pulse 1.5s infinite", boxShadow: "0 0 15px rgba(0,255,170,0.1)"
+            }}>
+              <div>
+                <b style={{ color: "#fff", textTransform: "uppercase" }}>{notif.who === "p1" ? "Jogador 1" : notif.who === "cpu" ? "CPU" : "Jogador 2"}: </b>
+                {notif.pass && <span style={{ color: "#7185b3" }}>Passou o turno.</span>}
+                {notif.bl && <span style={{ color: "#ff1144" }}>Está bloqueado e perdeu a vez!</span>}
+                {notif.failed && <span style={{ color: "#ff1144" }}>Tentou um combo inválido e queimou as cartas!</span>}
+                {notif.valid && <span style={{ color: "#00ffaa" }}>Formou <b style={{ fontSize: 16 }}>{notif.key}</b> (+{notif.pts} pts) — {notif.ex}</span>}
+                {notif.action && <span style={{ color: "#ff1144" }}>Disparou efeito <b style={{ color: "#fff" }}>{notif.act?.toUpperCase()}</b> {notif.pts ? `(${notif.pts} pts modificados)` : ""}</span>}
+                {notif.noPlay && <span style={{ color: "#ffcc00" }}>Selecione 1 Verbo + 1 Partícula, ou apenas 1 card de Ação!</span>}
+              </div>
+              <button onClick={() => setNotif(null)} style={{ background: "none", border: "none", color: "#7185b3", cursor: "pointer", fontWeight: 900 }}>[X]</button>
+            </div>
+          )}
+
+          {/* MÃO DO ADVERSÁRIO (CPU OU JOGADOR 2 PAIND & PLAY) */}
+          <div style={{ background: "rgba(10,14,32,0.4)", padding: 20, borderRadius: 16, border: "1px dashed #1f2a4e" }}>
+            <div style={{ fontSize: 12, color: "#7185b3", marginBottom: 10, fontWeight: 700 }}>MÃO DO OPONENTE ({gameMode === "solo" ? "CPU" : "JOGADOR 2"})</div>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+              {p2Hand.map(card => (
+                <Card key={card.id} card={card} faceDown={gameMode === "multi" && phase !== "p2"} />
+              ))}
+            </div>
+          </div>
+
+          {/* TABULEIRO CENTRAL DE AÇÃO */}
+          <div style={{
+            display: "flex", justifyContent: "center", alignItems: "center", gap: 20, padding: 30,
+            background: "radial-gradient(circle, #0e1634 0%, #060913 100%)", borderRadius: 24, border: "1px solid #151f3d", minHeight: 120
+          }}>
+            {selectedIds.length === 0 ? (
+              <div style={{ color: "#4e5d8c", fontSize: 14, letterSpacing: 1, textTransform: "uppercase" }}>Aguardando inserção de dados no buffer matriz...</div>
             ) : (
-              <div style={{fontSize:12,color:"#a0a0c0",maxWidth:280,lineHeight:1.4}}>
-                Combine <b style={{color:"#3355ff"}}>Verbo</b> + <b style={{color:"#ff7700"}}>Partícula</b> ou utilize um card de <b style={{color:"#ff1144"}}>Ação</b> estratégico.
+              <div style={{ display: "flex", gap: 12 }}>
+                { (phase === "p1" ? p1Hand : p2Hand).filter(c => selectedIds.includes(c.id)).map(card => (
+                  <Card key={card.id} card={card} onClick={() => selectCard(card.id)} />
+                ))}
               </div>
             )}
           </div>
-        )}
-      </div>
 
-      {/* Current Active Player Hand */}
-      <div style={{padding:"12px 8px",background:"rgba(10,14,35,0.2)"}}>
-        <div style={{fontSize:9,color:"#4a5080",letterSpacing:1.5,textAlign:"center",marginBottom:8}}>
-          SUAS CARTAS DISPONÍVEIS ({phase === "animating" ? "..." : phase.toUpperCase()})
-        </div>
-        <div style={{display:"flex",gap:6,justifyContent:"center",flexWrap:"wrap",minHeight:94}}>
-          {phase !== "cpu" && phase !== "animating" && currentActiveHand.map(c => (
-            <Card
-              key={c.id} card={c}
-              selected={selV?.id === c.id || selP?.id === c.id}
-              onClick={() => handleCardClick(c)}
-            />
-          ))}
-        </div>
-      </div>
+          {/* MÃO DO JOGADOR ATUAL */}
+          <div className="player-hand" style={{ background: "#0a0e20", padding: 25, borderRadius: 20, border: "2px solid #1f2a4e" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 15 }}>
+              <div style={{ fontSize: 14, color: "#fff", fontWeight: 800, letterSpacing: 1 }}>
+                MÃO ATUAL: <span style={{ color: "#3355ff" }}>{phase === "p1" ? "JOGADOR 1" : "JOGADOR 2"}</span>
+              </div>
+              {phase === "cpu" && <div style={{ color: "#ff7700", fontWeight: 800, fontSize: 13 }}>Sincronizando jogada da inteligência artificial...</div>}
+            </div>
 
-      {/* Controller Buttons */}
-      <div style={{padding:"8px 16px 20px",display:"flex",gap:10,justifyContent:"center"}}>
-        {selV && selP && (phase === "p1" || phase === "p2") && (
-          <button onClick={submitPlay} style={{
-            padding:"12px 32px",
-            background:pvValid?"linear-gradient(135deg,#00aa55,#44ffaa)":"linear-gradient(135deg,#aa0022,#ff3366)",
-            color:pvValid?"#001a08":"#fff",
-            border:"none",borderRadius:8,fontFamily:"'Orbitron',monospace",fontSize:12,fontWeight:900,letterSpacing:2,
-            cursor:"pointer",boxShadow:pvValid?"0 0 20px rgba(68,255,170,0.4)":"0 0 20px rgba(255,51,102,0.4)"
-          }}>
-            ⚔ LAÇAR JOGADA
-          </button>
-        )}
-        {(phase === "p1" || phase === "p2") && (
-          <button onClick={passTurn} style={{
-            padding:"12px 22px",background:"#0a0e28",color:"#7075a5",
-            border:"1px solid #1f2556",borderRadius:8,fontFamily:"'Rajdhani',sans-serif",fontSize:12,fontWeight:700,
-            cursor:"pointer",transition:"all 0.2s"
-          }}
-            onMouseEnter={e=>e.currentTarget.style.borderColor="#3355ff"}
-            onMouseLeave={e=>e.currentTarget.style.borderColor="#1f2556"}
-          >↩ PASSAR VEZ</button>
-        )}
-      </div>
-
-      {/* Footer Indicators */}
-      <div style={{paddingBottom:12,display:"flex",gap:16,justifyContent:"center"}}>
-        {[{c:"#3355ff",l:"VERBO"},{c:"#ff7700",l:"PARTÍCULA"},{c:"#ff1144",l:"AÇÃO"}].map(({c,l})=>(
-          <div key={l} style={{display:"flex",alignItems:"center",gap:5,fontSize:10,color:"#505580",fontWeight:600}}>
-            <div style={{width:8,height:8,borderRadius:2,background:c,boxShadow:`0 0 6px ${c}`}}/>
-            {l}
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap", minHeight: 160 }}>
+              {(phase === "p1" ? p1Hand : p2Hand).map(card => (
+                <Card
+                  key={card.id}
+                  card={card}
+                  selected={selectedIds.includes(card.id)}
+                  onClick={() => (phase === "p1" || (phase === "p2" && gameMode === "multi")) && selectCard(card.id)}
+                />
+              ))}
+            </div>
           </div>
-        ))}
-      </div>
+
+          {/* CONTROLES / BOTÕES */}
+          <div style={{ display: "flex", gap: 15, justifyContent: "flex-end", marginTop: 10 }}>
+            {(phase === "p1" || (phase === "p2" && gameMode === "multi")) && (
+              <>
+                <button onClick={passTurn} style={{
+                  padding: "16px 26px", background: "#111633", color: "#7185b3", border: "1px solid #1f2a4e",
+                  borderRadius: 10, fontFamily: "'Rajdhani', sans-serif", fontSize: 13, fontWeight: 700, cursor: "pointer", transition: "all 0.2s"
+                }} onMouseEnter={e => e.currentTarget.style.borderColor = "#3355ff"} onMouseLeave={e => e.currentTarget.style.borderColor = "#1f2a4e"}>
+                  ↩ PASSAR VEZ
+                </button>
+                <button className="play-btn" onClick={executePlayerTurn} style={{
+                  padding: "16px 36px", background: pvValid ? "linear-gradient(135deg, #00aa55, #33ffaa)" : "#1f1f1f",
+                  color: pvValid ? "#051a0e" : "#555", border: "none", borderRadius: 10, fontFamily: "'Orbitron', monospace",
+                  fontSize: 13, fontWeight: 900, cursor: pvValid ? "pointer" : "default", boxShadow: pvValid ? "0 0 20px rgba(51,255,170,0.4)" : "none",
+                  transition: "all 0.2s"
+                }}>
+                  ⚔️ LANÇAR JOGADA
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
