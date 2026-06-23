@@ -26,9 +26,7 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          npm install
-          npm install react-joyride lucide-react canvas-confetti --legacy-peer-deps
-          npm install @capacitor/cli @capacitor/core @capacitor/android
+          npm install react-joyride lucide-react canvas-confetti @capacitor/cli @capacitor/core @capacitor/android --legacy-peer-deps
 
       - name: Build Web App & Capacitor Sync
         run: |
