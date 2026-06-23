@@ -18,6 +18,19 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Make Gradlew Executable
+        run: chmod +x android/gradlew
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'zulu'
+          cache: 'gradle'
+
+      - name: Accept Android Licenses
+        run: yes | sdkmanager --licenses
+
       - name: Setup Java JDK
         uses: actions/setup-java@v4
         with:
