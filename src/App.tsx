@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
-import Joyride from "react-joyride";
-import { Step } from 'react-joyride';
+import { Joyride } from 'react-joyride';
+import type { Step } from 'react-joyride';
 
 /* ═══════════════════════════════════════════════════════
    TYPES & INTERFACES
