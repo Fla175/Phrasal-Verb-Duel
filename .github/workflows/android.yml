@@ -24,9 +24,12 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
-      - name: Install Dependencies
+      - name: Force Install Missing Packages
         run: |
-          npm install react-joyride lucide-react canvas-confetti @capacitor/cli @capacitor/core @capacitor/android --legacy-peer-deps
+          # Injeta os pacotes no package.json antes do build
+          npm install react-joyride lucide-react canvas-confetti --save
+          npm install @capacitor/cli @capacitor/core @capacitor/android --save
+          npm install --legacy-peer-deps
 
       - name: Build Web App & Capacitor Sync
         run: |
