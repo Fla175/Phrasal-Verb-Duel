@@ -33,13 +33,29 @@ jobs:
       - name: Build Web App & Capacitor Sync
         run: |
           npx vite build
+          # Garante que a plataforma exista
           npx cap add android || echo "Platform already exists"
+          
+          # Injeta a correção de conflito do Kotlin no build.gradle via comando de sistema
+          echo "
+          allprojects {
+              configurations.all {
+                  resolutionStrategy {
+                      force 'org.jetbrains.kotlin:kotlin-stdlib:1.8.22'
+                      force 'org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.22'
+                      force 'org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22'
+                  }
+              }
+          }" >> android/build.gradle
+          
           npx cap sync android
 
       - name: Build APK
         run: |
           cd android
           chmod +x gradlew
+          # Limpeza total para garantir que não reste lixo de builds falhos
+          ./gradlew clean
           ./gradlew assembleDebug
 
       - name: Upload APK
