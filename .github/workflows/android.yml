@@ -33,6 +33,7 @@ jobs:
       - name: Build Web App & Capacitor Sync
         run: |
           npx vite build
+          npx cap add android || echo "Platform already exists"
           npx cap sync android
 
       - name: Build APK
